@@ -6,9 +6,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from models import Base, DocRaw, Passage
 from pgvector.sqlalchemy import register_vector
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+load_dotenv()
 
 TEST_MODE = os.getenv('TEST_MODE', '0') == '1'
-load_dotenv()
 DB_URL = os.getenv('DATABASE_URL')
 EMBED_MODEL = os.getenv('EMBED_MODEL', 'text-embedding-3-large')
 
@@ -24,19 +26,12 @@ else:
 
 # --- chunker ---
 def simple_chunk(text: str, max_tokens: int = 600) -> List[str]:
-    # naive chunk by paragraphs then window; replace with tokenizer-based if needed
-    paras = [p.strip() for p in text.split('\n') if p.strip()]
-    chunks, buf, words = [], [], 0
-    for p in paras:
-        w = len(p.split())
-        if words + w > max_tokens:
-            if buf:
-                chunks.append('\n'.join(buf))
-            buf, words = [p], w
-        else:
-            buf.append(p); words += w
-    if buf:
-        chunks.append('\n'.join(buf))
+    splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        model_name=EMBED_MODEL,
+        chunk_size=max_tokens,
+        chunk_overlap=50
+    )
+    chunks = splitter.split_text(text)
     return chunks
 
 # --- embeddings ---

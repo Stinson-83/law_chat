@@ -2,12 +2,14 @@ fastapi
 uvicorn[standard]
 sqlalchemy>=2.0
 psycopg[binary]>=3.2
-pgvector>=0.2.5
+pgvector>=0.3.0
 pydantic
 python-dotenv
 orjson
 numpy
 pandas
+langchain
+tiktoken
 # Embeddings + reranker
 openai>=1.45.0
 sentence-transformers>=2.7.0
