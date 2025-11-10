@@ -4,20 +4,26 @@ import numpy as np
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text as sql
 from sqlalchemy.orm import Session
+from sentence_transformers import SentenceTransformer
+import hashlib
 
 load_dotenv()
 DB_URL = os.getenv('DATABASE_URL')
-EMBED_MODEL = os.getenv('EMBED_MODEL', 'text-embedding-3-large')
 TEST_MODE = os.getenv('TEST_MODE', '0') == '1'
+
+MODEL_NAME = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
+EMB_DIM = 768
+st_model = None
+if not TEST_MODE:
+    st_model = SentenceTransformer(MODEL_NAME)
 
 engine = create_engine(DB_URL)
 
 # Calculate embedding for query
 
-def _local_embed(s: str, dim: int = 1536) -> List[float]:
-    import hashlib
-    h = hashlib.sha256(s.encode('utf-8')).digest()
-    rng = np.random.default_rng(int.from_bytes(h[:8], 'big'))
+def _local_embed(s: str, dim: int = EMB_DIM) -> List[float]:
+    h = hashlib.sha256(s.encode("utf-8")).digest()
+    rng = np.random.default_rng(int.from_bytes(h[:8], "big"))
     v = rng.normal(size=dim)
     v = v / (np.linalg.norm(v) + 1e-9)
     return v.astype(float).tolist()
@@ -25,10 +31,9 @@ def _local_embed(s: str, dim: int = 1536) -> List[float]:
 
 def qembed(q: str) -> List[float]:
     if TEST_MODE:
-        return _local_embed(q)
-    from openai import OpenAI
-    client = OpenAI()
-    return client.embeddings.create(model=EMBED_MODEL, input=q).data[0].embedding
+        return _local_embed(q, dim=EMB_DIM)
+    emb = st_model.encode([q], normalize_embeddings=True)[0]
+    return emb.tolist()
 
 # Hybrid search SQL: filter lexically, order by vector distance; return lex and sem scores
 HYBRID_SQL = sql("""

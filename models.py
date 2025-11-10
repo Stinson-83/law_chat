@@ -27,7 +27,7 @@ class Passage(Base):
     section_no = Column(Text)
     heading = Column(Text)
     text = Column(Text, nullable=False)
-    embedding = Column(Vector(1536))
+    embedding = Column(Vector(768))
     year = Column(Integer)
     category = Column(Text)
     token_count = Column(Integer)

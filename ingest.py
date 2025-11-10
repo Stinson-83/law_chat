@@ -7,38 +7,37 @@ from sqlalchemy.orm import Session
 from models import Base, DocRaw, Passage
 from pgvector.sqlalchemy import register_vector
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
 TEST_MODE = os.getenv('TEST_MODE', '0') == '1'
 DB_URL = os.getenv('DATABASE_URL')
-EMBED_MODEL = os.getenv('EMBED_MODEL', 'text-embedding-3-large')
+MODEL_NAME = os.getenv("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
+EMB_DIM = 768
+
+# Create model only if not TEST_MODE
+st_model = None
+if not TEST_MODE:
+    st_model = SentenceTransformer(MODEL_NAME)
 
 engine = create_engine(DB_URL)
 register_vector(engine)
 Base.metadata.create_all(engine)
 
-if not TEST_MODE:
-    from openai import OpenAI
-    client = OpenAI()
-else:
-    client = None
-
 # --- chunker ---
 def simple_chunk(text: str, max_tokens: int = 600) -> List[str]:
     splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-        model_name=EMBED_MODEL,
+        model_name=st_model,
         chunk_size=max_tokens,
         chunk_overlap=50
     )
     chunks = splitter.split_text(text)
     return chunks
 
-# --- embeddings ---
-def _local_embed(s: str, dim: int = 1536) -> List[float]:
-    # deterministic hash-based embedding for tests
-    h = hashlib.sha256(s.encode('utf-8')).digest()
-    rng = np.random.default_rng(int.from_bytes(h[:8], 'big'))
+def _local_embed(s: str, dim: int = EMB_DIM) -> List[float]:
+    h = hashlib.sha256(s.encode("utf-8")).digest()
+    rng = np.random.default_rng(int.from_bytes(h[:8], "big"))
     v = rng.normal(size=dim)
     v = v / (np.linalg.norm(v) + 1e-9)
     return v.astype(float).tolist()
@@ -48,11 +47,11 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
         return []
     if TEST_MODE:
         return [_local_embed(t) for t in texts]
-    # OpenAI embeddings
-    from openai import OpenAI
-    client = OpenAI()
-    resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
-    return [d.embedding for d in resp.data]
+
+    # self-hosted encoder
+    embs = st_model.encode(texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
+    return embs.tolist()
+
 
 # --- helpers ---
 def make_checksum(s: str) -> str:

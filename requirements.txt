@@ -11,7 +11,6 @@ pandas
 langchain
 tiktoken
 # Embeddings + reranker
-openai>=1.45.0
 sentence-transformers>=2.7.0
 torch
 scikit-learn
