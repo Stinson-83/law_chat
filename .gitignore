@@ -99,5 +99,6 @@ logs/
 .coverage
 
 # Project-specific
+config.env
 # Keep example env for reference, ignore only filled ones
 !config.example.env
