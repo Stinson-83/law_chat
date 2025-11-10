@@ -57,7 +57,7 @@ WITH q AS (
 SELECT * FROM cand;
 """)
 
-def hybrid_search(query: str, filters: Dict=None, pre_k=200, mmr_k=20) -> List[Dict]:
+def hybrid_search(query: str, filters: Dict = None, pre_k=200, mmr_k=20) -> List[Dict]:
     q_emb = qembed(query)
     params = {'qtext': query, 'qemb': np.array(q_emb), 'pre_k': pre_k}
     where_extra = []
@@ -68,24 +68,56 @@ def hybrid_search(query: str, filters: Dict=None, pre_k=200, mmr_k=20) -> List[D
         if 'category' in filters:
             where_extra.append('category = :f_cat')
             params['f_cat'] = filters['category']
+
     sql_stmt = HYBRID_SQL
     if where_extra:
-        sql_str = HYBRID_SQL.text.replace('WHERE to_tsvector', 'WHERE ' + ' AND '.join(where_extra) + ' AND to_tsvector')
+        sql_str = HYBRID_SQL.text.replace(
+            'WHERE to_tsvector',
+            'WHERE ' + ' AND '.join(where_extra) + ' AND to_tsvector'
+        )
         sql_stmt = sql(sql_str)
 
     with Session(engine) as ses:
         rows = ses.execute(sql_stmt, params).mappings().all()
 
-    # Weighted blend score (lexical and semantic)
+    if not rows:
+        return []
+
+    # raw scores
+    lex_scores = np.array([float(r['lex']) for r in rows], dtype=np.float32)
+    # pgvector <=> is a distance. smaller is better. convert to similarity proxy
+    dist_scores = np.array([float(r['distance']) for r in rows], dtype=np.float32)
+    sem_scores = -dist_scores  # monotonic, scale will be normalised anyway
+
+    def zscore(x: np.ndarray) -> np.ndarray:
+        mu = x.mean()
+        sigma = x.std()
+        if sigma == 0:
+            return np.zeros_like(x)
+        return (x - mu) / sigma
+
+    lex_z = zscore(lex_scores)
+    sem_z = zscore(sem_scores)
+
+    alpha = 0.5  # tune this
+
     cands: List[Dict] = []
-    for r in rows:
-        sem = 1 - float(r['distance'])
-        lex = float(r['lex'])
-        score = 0.5 * lex + 0.5 * sem
+    for i, r in enumerate(rows):
+        score = alpha * lex_z[i] + (1.0 - alpha) * sem_z[i]
         cands.append({
-            'id': r['id'], 'doc_id': r['doc_id'], 'title': r['title'],
-            'heading': r['heading'], 'text': r['text'], 'year': r['year'], 'category': r['category'],
-            'lex': lex, 'distance': float(r['distance']), 'score': score
+            'id': r['id'],
+            'doc_id': r['doc_id'],
+            'title': r['title'],
+            'heading': r['heading'],
+            'text': r['text'],
+            'year': r['year'],
+            'category': r['category'],
+            'lex': float(lex_scores[i]),
+            'distance': float(dist_scores[i]),
+            'sem': float(sem_scores[i]),
+            'score': float(score),
         })
+
     cands.sort(key=lambda x: x['score'], reverse=True)
     return cands[:mmr_k]
+

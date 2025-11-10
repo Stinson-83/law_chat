@@ -2,16 +2,18 @@ fastapi
 uvicorn[standard]
 sqlalchemy>=2.0
 psycopg[binary]>=3.2
-pgvector>=0.3.0
+pgvector>=0.2.5
 pydantic
 python-dotenv
 orjson
 numpy
+scipy
 pandas
 langchain
 tiktoken
 # Embeddings + reranker
 sentence-transformers>=2.7.0
+transformers
 torch
 scikit-learn
 pytest
