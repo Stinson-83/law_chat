@@ -29,7 +29,6 @@ Base.metadata.create_all(engine)
 def simple_chunk(text):
     splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=100)
     chunks = splitter.split_text(text)
-    print(f"Number of chunks: {len(chunks)}")
     return chunks
 
 def _local_embed(s: str, dim: int = EMB_DIM) -> List[float]:
