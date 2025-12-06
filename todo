@@ -1,0 +1,7 @@
+> Enhance Query before doing search(will ask)
+> Enable filters based on query -^
+
+>Web-Search:
+    > Add More indian laws based Preferred domains
+    > Search agnet: DuckDuckGo[gets url] + Scrape, tavily[gets url] + Scrape ,DDG -> If extraction fails -> Tavily
+    > Scraping agent: Trafilatura(abs free) first -> If extraction fails -> fallback to Firecrawl(free tier)
