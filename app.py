@@ -93,12 +93,16 @@ def get_gemini_response(query: str, context: str, source_type: str) -> str:
     USER QUERY: {query}
     """
     
-    try:
-        response = model.generate_content(system_prompt)
-        return response.text
-    except Exception as e:
-        print(f"Gemini API Error: {e}")
-        return "I encountered an error while generating the answer. Please try again."
+# def gemni_enhance_query(query: str) -> Tuple[str, List[str]]:
+#     """
+#     Takes in the User query and gives out filter parameters for DB search.
+#     """
+#     try:
+#         response = model.generate_content(system_prompt)
+#         return response.text
+#     except Exception as e:
+#         print(f"Gemini API Error: {e}")
+#         return "I encountered an error while generating the answer. Please try again."
 
 # --- ENDPOINTS ---
 
