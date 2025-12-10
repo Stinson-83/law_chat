@@ -10,6 +10,7 @@ from ddgs import DDGS
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+logging.getLogger('trafilatura').setLevel(logging.ERROR)
 
 load_dotenv()
 
@@ -68,10 +69,11 @@ class WebSearcher:
 
         return combined
 
-    def _ddgs_search(self, query: str, max_results: int = 5) -> List[Dict]:
+    def _ddgs_search(self, query: str, max_results: int = 5, domains: List[str] = None) -> List[Dict]:
         """Perform web search using DuckDuckGo."""
         try:
-            domain_filter = " OR ".join(f"site:{d}" for d in PREFERRED_DOMAINS)
+            target_domains = domains if domains else PREFERRED_DOMAINS
+            domain_filter = " OR ".join(f"site:{d}" for d in target_domains)
             full_query = f"{query} ({domain_filter})"
             
             res = []
@@ -89,18 +91,19 @@ class WebSearcher:
             logger.error(f"❌ DDG Search Failed: {e}")
             return []
 
-    def _tavily_search(self, query: str, max_results: int = 5) -> List[Dict]:
+    def _tavily_search(self, query: str, max_results: int = 5, domains: List[str] = None) -> List[Dict]:
         """Perform web search using Tavily."""
         if not self.tavily_client:
             return []
         
         try:
+            target_domains = domains if domains else PREFERRED_DOMAINS
             res = []
             response = self.tavily_client.search(
                 query=query,
                 search_depth="advanced",
                 max_results=max_results,
-                include_domains=PREFERRED_DOMAINS
+                include_domains=target_domains
             )
             for result in response.get('results', []):
                 res.append({
@@ -191,14 +194,18 @@ class WebSearcher:
         
         return context
 
-    def search(self, query: str, max_results: int = 5) -> Tuple[str, List[Dict]]:
+    def search(self, query: str, max_results: int = 5, domains: List[str] = None) -> Tuple[str, List[Dict]]:
         """
         Performs a smart search for Indian Legal context.
+        Args:
+            query: The search query.
+            max_results: Max results per search engine.
+            domains: Optional list of domains to restrict search to. If None, uses PREFERRED_DOMAINS.
         Returns:
             - context_text: String formatted for the LLM
             - sources: List of dicts with citations
         """
-        logger.info(f"🌐 Searching Web for: {query}...")
+        logger.info(f"🌐 Searching Web for: {query} (Domains: {domains if domains else 'Default'})")
 
         # Run searches (could also be parallelized if needed, but they are fast enough usually)
         # We can run them in parallel for optimization
@@ -206,8 +213,8 @@ class WebSearcher:
         res2 = []
         
         with ThreadPoolExecutor(max_workers=2) as executor:
-            future_ddg = executor.submit(self._ddgs_search, query, max_results)
-            future_tavily = executor.submit(self._tavily_search, query, max_results)
+            future_ddg = executor.submit(self._ddgs_search, query, max_results, domains)
+            future_tavily = executor.submit(self._tavily_search, query, max_results, domains)
             
             res1 = future_ddg.result()
             res2 = future_tavily.result()

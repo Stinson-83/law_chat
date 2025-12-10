@@ -52,7 +52,7 @@ WITH q AS (
   SELECT
     -- Use websearch_to_tsquery for advanced operators (quotes, -exclude)
     websearch_to_tsquery('english', :qtext)      AS qtsv,
-    :qemb::vector                                AS qemb
+    CAST(:qemb AS vector)                        AS qemb
 )
 SELECT 
     p.id, 
@@ -90,7 +90,7 @@ def hybrid_search(query: str, filters: Dict = None, pre_k=200, mmr_k=20) -> List
     q_emb = qembed(query)
     params = {
         'qtext': query, 
-        'qemb': np.array(q_emb), 
+        'qemb': q_emb, 
         'pre_k': pre_k
     }
     
