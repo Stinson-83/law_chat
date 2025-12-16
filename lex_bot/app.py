@@ -16,8 +16,8 @@ if current_dir not in sys.path:
     sys.path.append(os.path.dirname(current_dir)) # Add parent to path to allow 'lex_bot.graph' imports if needed
     sys.path.append(current_dir) # Add self
 
-from lex_bot.graph import app as agent_app
-from lex_bot.state import AgentState
+from .graph import LegalWorkflow
+from .state import AgentState
 
 app = FastAPI(title="Lex Bot API", description="Advanced Agentic Indian Law Research Bot")
 
@@ -54,7 +54,8 @@ async def chat_endpoint(request: QueryRequest):
     
     try:
         # Invoke the graph
-        result = agent_app.invoke(initial_state)
+        workflow = LegalWorkflow()
+        result = workflow.run(initial_state)
         
         return QueryResponse(
             answer=result.get("final_answer", "No answer generated."),
