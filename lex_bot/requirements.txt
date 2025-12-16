@@ -11,11 +11,15 @@ langchain-openai
 # Vector / Embeddings
 sentence-transformers
 numpy
+faiss-cpu
 
 # Database
 sqlalchemy
 psycopg2-binary
 pgvector
+
+# Memory
+mem0ai
 
 # Web Search & Scraping
 ddgs
@@ -23,9 +27,11 @@ tavily-python
 trafilatura
 firecrawl-py
 lxml_html_clean
+beautifulsoup4
+requests
 
 # API / Server
 fastapi
 uvicorn
 python-dotenv
-requests
+

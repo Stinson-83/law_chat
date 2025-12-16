@@ -1,0 +1,107 @@
+{
+    "103": {
+        "title": "Punishment for murder",
+        "description": "Whoever commits murder shall be punished with death or imprisonment for life, and shall also be liable to fine.",
+        "offense": "Murder",
+        "punishment": "Death or imprisonment for life, and fine",
+        "ipc_equivalent": "302"
+    },
+    "105": {
+        "title": "Punishment for culpable homicide not amounting to murder",
+        "description": "Whoever commits culpable homicide not amounting to murder shall be punished appropriately based on the nature of the act.",
+        "offense": "Culpable homicide not amounting to murder",
+        "punishment": "Imprisonment for life, or up to 10 years, and fine",
+        "ipc_equivalent": "304"
+    },
+    "106": {
+        "title": "Causing death by negligence",
+        "description": "Whoever causes death of any person by doing any rash or negligent act not amounting to culpable homicide.",
+        "offense": "Death by negligence",
+        "punishment": "Up to 5 years imprisonment and fine; up to 10 years if by registered medical practitioner",
+        "ipc_equivalent": "304A"
+    },
+    "80": {
+        "title": "Dowry death",
+        "description": "Where the death of a woman is caused by any burns or bodily injury or occurs otherwise than under normal circumstances within seven years of her marriage.",
+        "offense": "Dowry death",
+        "punishment": "Imprisonment not less than 7 years, may extend to life imprisonment",
+        "ipc_equivalent": "304B"
+    },
+    "108": {
+        "title": "Abetment of suicide",
+        "description": "If any person commits suicide, whoever abets the commission of such suicide.",
+        "offense": "Abetment of suicide",
+        "punishment": "Up to 10 years imprisonment and fine",
+        "ipc_equivalent": "306"
+    },
+    "109": {
+        "title": "Attempt to murder",
+        "description": "Whoever does any act with such intention or knowledge that if by that act caused death would be guilty of murder.",
+        "offense": "Attempt to murder",
+        "punishment": "Up to 10 years imprisonment and fine; life imprisonment if hurt caused",
+        "ipc_equivalent": "307"
+    },
+    "74": {
+        "title": "Assault or use of criminal force to woman with intent to outrage her modesty",
+        "description": "Whoever assaults or uses criminal force to any woman intending to outrage her modesty.",
+        "offense": "Outraging modesty of woman",
+        "punishment": "1-5 years imprisonment and fine",
+        "ipc_equivalent": "354"
+    },
+    "63": {
+        "title": "Punishment for rape",
+        "description": "Whoever commits rape shall be punished with rigorous imprisonment for a term not less than ten years.",
+        "offense": "Rape",
+        "punishment": "Minimum 10 years RI, may extend to life imprisonment, and fine",
+        "ipc_equivalent": "376"
+    },
+    "303": {
+        "title": "Punishment for theft",
+        "description": "Whoever commits theft shall be punished with imprisonment for a term which may extend to three years.",
+        "offense": "Theft",
+        "punishment": "Up to 3 years imprisonment, or fine, or both",
+        "ipc_equivalent": "379"
+    },
+    "309": {
+        "title": "Punishment for robbery",
+        "description": "Whoever commits robbery shall be punished with rigorous imprisonment.",
+        "offense": "Robbery",
+        "punishment": "Up to 10 years RI and fine",
+        "ipc_equivalent": "392"
+    },
+    "316": {
+        "title": "Punishment for criminal breach of trust",
+        "description": "Whoever commits criminal breach of trust shall be punished appropriately.",
+        "offense": "Criminal breach of trust",
+        "punishment": "Up to 3 years imprisonment, or fine, or both",
+        "ipc_equivalent": "406"
+    },
+    "318": {
+        "title": "Cheating",
+        "description": "Whoever cheats and thereby dishonestly induces delivery of property.",
+        "offense": "Cheating",
+        "punishment": "Up to 7 years imprisonment and fine",
+        "ipc_equivalent": "420"
+    },
+    "85": {
+        "title": "Cruelty by husband or relatives",
+        "description": "Whoever being the husband or relative of husband subjects woman to cruelty.",
+        "offense": "Cruelty by husband or relatives",
+        "punishment": "Up to 3 years imprisonment and fine",
+        "ipc_equivalent": "498A"
+    },
+    "356": {
+        "title": "Defamation",
+        "description": "Whoever makes or publishes any imputation concerning any person intending to harm reputation.",
+        "offense": "Defamation",
+        "punishment": "Up to 2 years simple imprisonment, or fine, or both",
+        "ipc_equivalent": "499"
+    },
+    "351": {
+        "title": "Criminal intimidation",
+        "description": "Whoever commits the offence of criminal intimidation.",
+        "offense": "Criminal intimidation",
+        "punishment": "Up to 2 years imprisonment, or fine, or both",
+        "ipc_equivalent": "506"
+    }
+}
