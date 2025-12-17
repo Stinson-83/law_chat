@@ -1,10 +1,14 @@
 import logging
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Tuple, Optional
 import trafilatura
 from tavily import TavilyClient
-from ddgs import DDGS
-from lex_bot.config import TAVILY_API_KEY, FIRECRAWLER_API_KEY, WEB_SEARCH_MAX_RESULTS, PREFERRED_DOMAINS
+from duckduckgo_search import DDGS
+from lex_bot.config import (
+    TAVILY_API_KEY, SERPER_API_KEY, GOOGLE_SERP_API_KEY,
+    FIRECRAWL_API_KEY, WEB_SEARCH_MAX_RESULTS, PREFERRED_DOMAINS
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -12,11 +16,13 @@ logger = logging.getLogger(__name__)
 class WebSearchTool:
     def __init__(self):
         self.tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
+        self.serper_key = SERPER_API_KEY
+        self.google_serp_key = GOOGLE_SERP_API_KEY
         self.firecrawl = None
-        if FIRECRAWLER_API_KEY:
+        if FIRECRAWL_API_KEY:
             try:
                 from firecrawl import FirecrawlApp
-                self.firecrawl = FirecrawlApp(api_key=FIRECRAWLER_API_KEY)
+                self.firecrawl = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
             except:
                 logger.warning("Could not initialize Firecrawl.")
 
@@ -71,6 +77,72 @@ class WebSearchTool:
             logger.error(f"Tavily Failed: {e}")
             return []
 
+    def _serper_search(self, query: str, max_results: int, domains: List[str] = None) -> List[Dict]:
+        """Serper.dev search fallback"""
+        if not self.serper_key:
+            return []
+        try:
+            headers = {"X-API-KEY": self.serper_key, "Content-Type": "application/json"}
+            payload = {"q": query, "num": max_results}
+            
+            # Add site filter if domains specified
+            if domains:
+                site_filter = " OR ".join(f"site:{d}" for d in domains[:5])
+                payload["q"] = f"{query} ({site_filter})"
+            
+            response = requests.post(
+                "https://google.serper.dev/search",
+                headers=headers,
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            res = []
+            for r in data.get("organic", []):
+                res.append({
+                    "title": r.get("title", "Unknown"),
+                    "url": r.get("link", ""),
+                    "snippet": r.get("snippet", "")
+                })
+            return res
+        except Exception as e:
+            logger.error(f"Serper Failed: {e}")
+            return []
+
+    def _google_serp_search(self, query: str, max_results: int, domains: List[str] = None) -> List[Dict]:
+        """Google SERP API fallback (SerpAPI or similar)"""
+        if not self.google_serp_key:
+            return []
+        try:
+            params = {
+                "api_key": self.google_serp_key,
+                "q": query,
+                "num": max_results,
+                "engine": "google"
+            }
+            
+            response = requests.get(
+                "https://serpapi.com/search",
+                params=params,
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            res = []
+            for r in data.get("organic_results", []):
+                res.append({
+                    "title": r.get("title", "Unknown"),
+                    "url": r.get("link", ""),
+                    "snippet": r.get("snippet", "")
+                })
+            return res
+        except Exception as e:
+            logger.error(f"Google SERP Failed: {e}")
+            return []
+
     def _scrape_single(self, url: str) -> str:
         # 1. Trafilatura
         try:
@@ -79,7 +151,7 @@ class WebSearchTool:
                 text = trafilatura.extract(downloaded, favor_precision=True)
                 if text:
                     return f"\n\n{text}\n\n"
-        except:
+        except Exception as e:
             logger.error(f"Trafilatura failed for {url}: {e}")
             pass
         
@@ -109,16 +181,26 @@ class WebSearchTool:
 
     def run(self, query: str, domains: List[str] = None) -> Tuple[str, List[Dict]]:
         """
-        Executes the search strategy:
-        1. DDG Search
+        Executes the search strategy with full fallback chain:
+        1. DDG Search (free)
         2. If DDG empty -> Tavily
-        3. Scrape URLs -> Context
+        3. If Tavily empty -> Serper
+        4. If Serper empty -> Google SERP
+        5. Scrape URLs -> Context
         """
         results = self._ddgs_search(query, WEB_SEARCH_MAX_RESULTS, domains)
         
         if not results:
             print("⚠️ DDG yielded no results, switching to Tavily...")
             results = self._tavily_search(query, WEB_SEARCH_MAX_RESULTS, domains)
+        
+        if not results:
+            print("⚠️ Tavily yielded no results, switching to Serper...")
+            results = self._serper_search(query, WEB_SEARCH_MAX_RESULTS, domains)
+        
+        if not results:
+            print("⚠️ Serper yielded no results, switching to Google SERP...")
+            results = self._google_serp_search(query, WEB_SEARCH_MAX_RESULTS, domains)
             
         # Extract URLs
         urls = [r['url'] for r in results if r.get('url')]

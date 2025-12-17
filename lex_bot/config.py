@@ -1,15 +1,20 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from lex_bot directory
+_this_dir = Path(__file__).parent
+load_dotenv(_this_dir / ".env")
 
 # --- API KEYS ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-FIRECRAWLER_API_KEY = os.getenv("FIRECRAWLER_API_KEY")
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")  # Fallback search
+GOOGLE_SERP_API_KEY = os.getenv("GOOGLE_SERP_API_KEY")  # Fallback search
+FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
-JHANA_API_KEY = os.getenv("JHANA_API_KEY")  # Jhana.ai (when available)
+VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY")  # Future: voyage-law-2
 
 # --- LLM MODES ---
 # "fast" = quick responses, lower cost
@@ -18,11 +23,11 @@ LLM_MODE = os.getenv("LLM_MODE", "fast")
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # "gemini" or "openai"
 
 # Fast Mode Models
-GEMINI_FAST_MODEL = "gemini-1.5-flash"
+GEMINI_FAST_MODEL = "gemini-2.5-flash"
 OPENAI_FAST_MODEL = "gpt-4o-mini"
 
 # Reasoning Mode Models
-GEMINI_REASONING_MODEL = "gemini-1.5-pro"
+GEMINI_REASONING_MODEL = "gemini-2.5-pro"
 OPENAI_REASONING_MODEL = "gpt-4o"
 
 # Legacy compatibility

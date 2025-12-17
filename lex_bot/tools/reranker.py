@@ -11,7 +11,7 @@ try:
     from sentence_transformers import CrossEncoder
     HAS_SENTENCE_TRANSFORMERS = True
 except ImportError:
-    print("⚠️  Sentence Transformers not found/broken. Reranking disabled.")
+    print("[WARN] Sentence Transformers not found/broken. Reranking disabled.")
 
 def get_reranker():
     global _reranker
@@ -20,11 +20,11 @@ def get_reranker():
         
     if _reranker is None:
         try:
-            print(f"⚖️  Loading Reranker: {RERANK_MODEL}...")
+            print(f"[RERANK] Loading Reranker: {RERANK_MODEL}...")
             # FORCE CPU to avoid OOM on weak GPUs / limited VRAM envs
             _reranker = CrossEncoder(RERANK_MODEL, trust_remote_code=True, device='cpu')
         except Exception as e:
-            print(f"❌ Failed to load Reranker model: {e}")
+            print(f"[ERROR] Failed to load Reranker model: {e}")
             return None
             
     return _reranker
@@ -81,7 +81,7 @@ def rerank_documents(query: str, candidates: List[Dict], top_n: int = 10, thresh
             candidates = [c for c in candidates if c['rerank_score'] >= threshold]
             
     except Exception as e:
-        print(f"⚠️ Rerank failed during prediction: {e}")
+        print(f"[WARN] Rerank failed during prediction: {e}")
         return candidates[:top_n]
         
     return candidates[:top_n]

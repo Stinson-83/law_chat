@@ -2,8 +2,8 @@
 LLM Factory - Dual Mode LLM Provider
 
 Supports two modes:
-- Fast: gemini-1.5-flash / gpt-4o-mini (quick responses, lower cost)
-- Reasoning: gemini-1.5-pro / gpt-4o (complex analysis, higher accuracy)
+- Fast: gemini-2.5-flash / gpt-4o-mini (quick responses, lower cost)
+- Reasoning: gemini-2.5-pro / gpt-4o (complex analysis, higher accuracy)
 """
 
 from typing import Literal, Optional
