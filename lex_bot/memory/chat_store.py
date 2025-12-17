@@ -32,7 +32,7 @@ class ChatMessage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     role = Column(String(50), nullable=False)  # "user", "assistant", "system"
     content = Column(Text, nullable=False)
-    metadata = Column(JSON, nullable=True)  # Extra info like query_complexity, llm_mode
+    msg_metadata = Column(JSON, nullable=True)  # Extra info like query_complexity, llm_mode
 
 
 class ChatStore:
@@ -72,7 +72,7 @@ class ChatStore:
         session_id: str,
         role: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None
+        msg_metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Add a chat message to the store.
@@ -82,7 +82,7 @@ class ChatStore:
             session_id: Session identifier
             role: Message role ("user", "assistant", "system")
             content: Message content
-            metadata: Optional metadata dict
+            msg_metadata: Optional metadata dict
             
         Returns:
             True if successful, False otherwise
@@ -98,7 +98,7 @@ class ChatStore:
                     session_id=session_id,
                     role=role,
                     content=content,
-                    metadata=metadata
+                    msg_metadata=msg_metadata
                 )
                 session.add(msg)
                 session.commit()
@@ -112,7 +112,7 @@ class ChatStore:
         user_id: str,
         session_id: str,
         messages: List[Dict[str, str]],
-        metadata: Optional[Dict[str, Any]] = None
+        msg_metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Add multiple messages from a conversation.
@@ -121,7 +121,7 @@ class ChatStore:
             user_id: User identifier
             session_id: Session identifier
             messages: List of message dicts with 'role' and 'content'
-            metadata: Optional metadata to attach to all messages
+            msg_metadata: Optional metadata to attach to all messages
             
         Returns:
             True if successful
@@ -137,7 +137,7 @@ class ChatStore:
                         session_id=session_id,
                         role=msg_dict.get("role", "user"),
                         content=msg_dict.get("content", ""),
-                        metadata=metadata
+                        msg_metadata=msg_metadata
                     )
                     session.add(msg)
                 session.commit()
@@ -179,7 +179,7 @@ class ChatStore:
                         "role": msg.role,
                         "content": msg.content,
                         "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
-                        "metadata": msg.metadata
+                        "metadata": msg.msg_metadata
                     }
                     for msg in reversed(messages)  # Return in chronological order
                 ]
