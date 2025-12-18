@@ -61,3 +61,10 @@ class LegalWorkflow:
         Convenience method to invoke the graph.
         """
         return self.app.invoke(input_data)
+
+# Initialize the workflow
+legal_workflow = LegalWorkflow()
+app = legal_workflow.app
+
+if __name__ == "__main__":
+    print("Graph compiled successfully.")

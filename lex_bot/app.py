@@ -1,77 +1,125 @@
 import os
-from typing import List, Optional
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+import sys
+import logging
+from typing import Optional, List
 from dotenv import load_dotenv
+
+# --- 1. Configuration & Logging Setup ---
 
 # Load env relative to this file
 current_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(current_dir, ".env"))
 
-# Import Graph (Ensure path is correct)
-# Since we are inside lex_bot, we can import relative or absolute if in path
-# Assuming running via uvicorn lex_bot.app:app from one level up OR python lex_bot/app.py
-import sys
-if current_dir not in sys.path:
-    sys.path.append(os.path.dirname(current_dir)) # Add parent to path to allow 'lex_bot.graph' imports if needed
-    sys.path.append(current_dir) # Add self
+# Configure Console Logging
+# This sets up a logger that prints info/errors to your terminal with timestamps
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - [%(levelname)s] - %(name)s - %(message)s',
+    datefmt='%H:%M:%S',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("LexBot")
 
-from .graph import LegalWorkflow
-from .state import AgentState
+# --- 2. Path Setup ---
 
-app = FastAPI(title="Lex Bot API", description="Advanced Agentic Indian Law Research Bot")
+# Add parent directory to path to allow 'lex_bot.graph' imports
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+    logger.info(f"Added {parent_dir} to sys.path for module resolution.")
 
-class QueryRequest(BaseModel):
-    query: str
+# --- 3. Internal Imports ---
 
-class QueryResponse(BaseModel):
-    answer: str
-    law_query: Optional[str] = None
-    case_query: Optional[str] = None
-    final_state: Optional[dict] = None
+try:
+    from lex_bot.graph import LegalWorkflow
+    from lex_bot.state import AgentState
+    logger.info("Successfully imported LegalWorkflow and AgentState.")
+except ImportError as e:
+    logger.critical(f"Failed to import internal modules: {e}")
+    sys.exit(1)
 
-@app.get("/")
-def health_check():
-    return {"status": "active", "system": "Lex Bot"}
+# --- 4. Main Application Logic ---
 
-@app.post("/chat", response_model=QueryResponse)
-async def chat_endpoint(request: QueryRequest):
+def process_query(query: str):
     """
-    Main endpoint to interact with the bot.
+    Handles the workflow execution for a single query.
     """
-    if not request.query:
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-    
-    print(f"📨 API Request: {request.query}")
-    
+    logger.info(f"📨 Processing new query: '{query}'")
+
+    # Initialize state
     initial_state = AgentState(
         messages=[],
-        original_query=request.query,
+        original_query=query,
         law_context=[],
         case_context=[],
         errors=[]
     )
-    
+
     try:
-        # Invoke the graph
+        # Initialize Workflow
+        logger.info("⚙️  Initializing Legal Workflow...")
         workflow = LegalWorkflow()
+        
+        # Invoke the graph
+        logger.info("🏃 Running workflow graph...")
         result = workflow.run(initial_state)
         
-        return QueryResponse(
-            answer=result.get("final_answer", "No answer generated."),
-            law_query=result.get("law_query"),
-            case_query=result.get("case_query"),
-            # Exclude large context from response to save bandwidth, or include if needed
-            # final_state=result 
-        )
-        
+        # Extract Results
+        answer = result.get("final_answer", "No answer generated.")
+        law_q = result.get("law_query")
+        case_q = result.get("case_query")
+
+        # Log specific details about the execution
+        if law_q:
+            logger.info(f"⚖️  Generated Law Query: {law_q}")
+        if case_q:
+            logger.info(f"🏛️  Generated Case Query: {case_q}")
+
+        return answer
+
     except Exception as e:
-        print(f"❌ API Error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ Workflow Execution Error: {e}", exc_info=True)
+        return f"An error occurred while processing your request: {str(e)}"
+
+def run_terminal_mode():
+    """
+    Main interactive loop for the terminal.
+    """
+    print("\n" + "="*60)
+    print("🤖 Lex Bot - Advanced Agentic Indian Law Research (Terminal Mode)")
+    print("   Type 'exit', 'quit', or 'q' to stop.")
+    print("="*60 + "\n")
+
+    while True:
+        try:
+            user_input = input("\n👉 Enter your legal query: ").strip()
+
+            # Exit conditions
+            if user_input.lower() in ["exit", "quit", "q"]:
+                logger.info("Shutting down Lex Bot. Goodbye!")
+                print("\n👋 Exiting...")
+                break
+
+            if not user_input:
+                logger.warning("Empty input received. Please type a query.")
+                continue
+
+            # Process
+            response = process_query(user_input)
+
+            # Display Output cleanly
+            print("\n" + "-"*30 + " RESPONSE " + "-"*30)
+            print(response)
+            print("-"*70)
+
+        except KeyboardInterrupt:
+            # Handle Ctrl+C gracefully
+            print("\n\n👋 Forced exit detected.")
+            break
+        except Exception as e:
+            logger.critical(f"Unexpected system error: {e}")
 
 if __name__ == "__main__":
-    import uvicorn
-    print("🚀 Starting Server on Port 8000...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    run_terminal_mode()
