@@ -40,6 +40,10 @@ class AgentState(TypedDict):
     # Tool results from various agents
     tool_results: Annotated[List[Dict], operator.add]
     
+    # --- PDF Integration ---
+    uploaded_file_path: Optional[str]
+    document_context: Annotated[List[Dict], operator.add]
+    
     # Memory context retrieved for this user
     memory_context: Optional[List[Dict]]
     

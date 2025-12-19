@@ -33,6 +33,7 @@ class SessionCache:
         """Initialize session cache."""
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._hashes: Dict[str, set] = {}  # Track content hashes per session
+        self._file_paths: Dict[str, str] = {} # Track uploaded file path per session
         self._model = None
         self._faiss = None
         self._initialized = False
@@ -183,12 +184,24 @@ class SessionCache:
             return []
         return self._sessions[session_id]["documents"]
     
+    def set_file_path(self, session_id: str, file_path: str):
+        """Store the uploaded file path for a session."""
+        self._get_or_create_session(session_id) # Ensure session exists
+        self._file_paths[session_id] = file_path
+        logger.info(f"Stored file path for session {session_id}: {file_path}")
+
+    def get_file_path(self, session_id: str) -> Optional[str]:
+        """Retrieve the uploaded file path for a session."""
+        return self._file_paths.get(session_id)
+    
     def clear_session(self, session_id: str) -> bool:
         """Clear a specific session cache."""
         if session_id in self._sessions:
             del self._sessions[session_id]
         if session_id in self._hashes:
             del self._hashes[session_id]
+        if session_id in self._file_paths:
+            del self._file_paths[session_id]
         logger.info(f"Cleared session cache: {session_id}")
         return True
     

@@ -1,0 +1,109 @@
+import logging
+from typing import Dict, Any, List
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
+from .base_agent import BaseAgent
+from ..tools.pdf_processor import pdf_processor
+from ..tools.web_search import web_search_tool
+from ..tools.reranker import rerank_documents
+
+logger = logging.getLogger(__name__)
+
+DOC_AGENT_PROMPT = """You are a helpful assistant analyzing a document uploaded by the user.
+
+**User Query:**
+{query}
+
+**Document Context (from uploaded PDF):**
+{doc_context}
+
+**External Context (from Web Search):**
+{web_context}
+
+**Instructions:**
+1. Answer the user's query primarily using the Document Context.
+2. Use External Context to supplement or verify information if needed.
+3. Clearly state if the information comes from the document or external sources.
+4. If the document doesn't contain the answer, say so, and rely on external context (but mention this).
+5. Be concise and accurate.
+
+**Answer:**"""
+
+class DocumentAgent(BaseAgent):
+    """
+    Agent for answering queries based on uploaded documents + web search.
+    """
+    
+    def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        query = state.get("original_query", "")
+        file_path = state.get("uploaded_file_path")
+        
+        logger.info(f"📄 DocumentAgent processing: {query[:50]}...")
+        
+        # 1. Process Document
+        doc_context_str = "No document provided."
+        doc_chunks = []
+        
+        if file_path:
+            try:
+                # Extract and chunk
+                full_text = pdf_processor.extract_text(file_path)
+                chunks = pdf_processor.chunk_text(full_text)
+                
+                # Create pseudo-documents for reranker
+                doc_docs = [{"text": c, "source": "Uploaded PDF"} for c in chunks]
+                
+                # Rerank to find relevant chunks
+                if doc_docs:
+                    top_chunks = rerank_documents(query, doc_docs, top_n=10)
+                    doc_chunks = top_chunks
+                    
+                    # Format for prompt
+                    doc_context_str = "\n\n".join([
+                        f"[PDF Chunk]: {c['text']}" for c in top_chunks
+                    ])
+                else:
+                    doc_context_str = "Document was empty or could not be read."
+                    
+            except Exception as e:
+                logger.error(f"Document processing failed: {e}")
+                doc_context_str = f"Error processing document: {e}"
+        
+        # 2. Web Search (for extra context)
+        web_context_str = "No web search performed."
+        web_results = []
+        try:
+            # Enhance query slightly for web
+            enhanced_query = f"{query} legal context"
+            web_ctx, web_res = web_search_tool.run(enhanced_query)
+            web_results = web_res
+            if web_ctx:
+                web_context_str = web_ctx[:2000] # Limit length
+        except Exception as e:
+            logger.error(f"Web search failed: {e}")
+        
+        # 3. Generate Answer
+        prompt = ChatPromptTemplate.from_template(DOC_AGENT_PROMPT)
+        chain = prompt | self.llm | StrOutputParser()
+        
+        try:
+            answer = chain.invoke({
+                "query": query,
+                "doc_context": doc_context_str,
+                "web_context": web_context_str
+            })
+        except Exception as e:
+            logger.error(f"Answer generation failed: {e}")
+            answer = f"Failed to generate answer: {e}"
+            
+        return {
+            "final_answer": answer,
+            "document_context": doc_chunks,
+            "tool_results": [{
+                "agent": "document",
+                "web_results": web_results
+            }]
+        }
+
+document_agent = DocumentAgent()

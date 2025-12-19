@@ -43,6 +43,7 @@ from .state import AgentState
 from .agents.manager import manager_agent
 from .agents.law_agent import law_agent
 from .agents.case_agent import case_agent
+from .agents.document_agent import document_agent
 from .memory import UserMemoryManager
 from .config import MEM0_ENABLED
 
@@ -106,6 +107,7 @@ def define_graph():
     workflow.add_node("manager_decompose", manager_agent.decompose_query)
     workflow.add_node("law_agent", law_agent.run)
     workflow.add_node("case_agent", case_agent.run)
+    workflow.add_node("document_agent", document_agent.run)
     workflow.add_node("manager_aggregate", manager_agent.generate_response)
     workflow.add_node("memory_store", memory_store_node)
     
@@ -119,6 +121,10 @@ def define_graph():
     # Conditional routing based on decomposed queries
     def route_agents(state: AgentState) -> List[str]:
         """Route to appropriate agents based on query decomposition."""
+        # Priority: If file is uploaded, go to document agent
+        if state.get("uploaded_file_path"):
+            return ["document_agent"]
+
         routes = []
         
         if state.get("law_query"):
@@ -136,12 +142,15 @@ def define_graph():
     workflow.add_conditional_edges(
         "manager_decompose",
         route_agents,
-        ["law_agent", "case_agent"]
+        ["law_agent", "case_agent", "document_agent"]
     )
     
     # Fan-in: Both agents -> Manager aggregate
     workflow.add_edge("law_agent", "manager_aggregate")
     workflow.add_edge("case_agent", "manager_aggregate")
+    
+    # Document Agent -> Memory Store (Skip aggregate as it generates its own answer)
+    workflow.add_edge("document_agent", "memory_store")
     
     # Final aggregation -> Memory store -> END
     workflow.add_edge("manager_aggregate", "memory_store")
@@ -159,7 +168,8 @@ def run_query(
     query: str,
     user_id: str = None,
     session_id: str = None,
-    llm_mode: str = "fast"
+    llm_mode: str = "fast",
+    file_path: str = None
 ) -> Dict[str, Any]:
     """
     Run a legal research query through the agent workflow.
@@ -179,6 +189,7 @@ def run_query(
         "user_id": user_id,
         "session_id": session_id,
         "llm_mode": llm_mode,
+        "uploaded_file_path": file_path,
         "law_context": [],
         "case_context": [],
         "tool_results": [],

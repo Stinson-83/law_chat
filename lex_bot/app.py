@@ -11,7 +11,7 @@ import os
 import uuid
 from typing import Optional
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -29,6 +29,7 @@ if current_dir not in sys.path:
 from lex_bot.graph import run_query
 from lex_bot.memory import UserMemoryManager
 from lex_bot.config import MEM0_ENABLED
+from lex_bot.tools.session_cache import get_session_cache
 
 # ============ FastAPI App ============
 app = FastAPI(
@@ -53,6 +54,7 @@ class QueryRequest(BaseModel):
     user_id: Optional[str] = Field(None, description="User ID for memory personalization")
     session_id: Optional[str] = Field(None, description="Session ID for conversation tracking")
     llm_mode: Optional[str] = Field("fast", description="LLM mode: 'fast' or 'reasoning'")
+    file_path: Optional[str] = Field(None, description="Path to uploaded file (if any)")
 
 
 class QueryResponse(BaseModel):
@@ -106,12 +108,22 @@ async def chat_endpoint(request: QueryRequest):
         print(f"   User: {request.user_id}")
     
     try:
+        # Check for file in session cache if not provided
+        file_path = request.file_path
+        if not file_path and request.session_id:
+            session_cache = get_session_cache()
+            cached_path = session_cache.get_file_path(request.session_id)
+            if cached_path:
+                print(f"   Using cached file for session {request.session_id}: {cached_path}")
+                file_path = cached_path
+
         # Run the query through the graph
         result = run_query(
             query=request.query,
             user_id=request.user_id,
             session_id=request.session_id or str(uuid.uuid4()),
-            llm_mode=request.llm_mode or "fast"
+            llm_mode=request.llm_mode or "fast",
+            file_path=file_path
         )
         
         processing_time = int((time.time() - start_time) * 1000)
@@ -182,6 +194,47 @@ async def memory_endpoint(request: MemoryRequest):
         raise
     except Exception as e:
         print(f"❌ Memory Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    session_id: str = Form(...)
+):
+    """
+    Upload a file for temporary processing.
+    Requires session_id to associate the file with a conversation.
+    """
+    try:
+        # Create uploads directory if not exists
+        upload_dir = os.path.join(current_dir, "data", "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generate unique filename
+        file_ext = os.path.splitext(file.filename)[1]
+        unique_name = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(upload_dir, unique_name)
+        
+        # Save file
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+            
+        # Store in session cache
+        session_cache = get_session_cache()
+        session_cache.set_file_path(session_id, file_path)
+            
+        print(f"📂 File uploaded for session {session_id}: {file_path}")
+        return {
+            "file_path": file_path, 
+            "filename": file.filename,
+            "session_id": session_id,
+            "message": "File uploaded and linked to session."
+        }
+        
+    except Exception as e:
+        print(f"❌ Upload Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
