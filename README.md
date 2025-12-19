@@ -13,6 +13,50 @@ The application uses a **Hub-and-Spoke** agentic workflow managed by a central o
 5.  **Fan-In (Aggregation)**: The Manager Agent collects all results, reranks the information based on relevance, and synthesizes a comprehensive final answer.
 6.  **Memory**: Key facts and context are stored in a persistent memory layer for future interactions.
 
+```mermaid
+graph TD
+    Start([Start]) --> MemoryRecall[Memory Recall]
+    MemoryRecall --> Router{Query Router}
+    
+    Router -- "Simple/Complex" --> ManagerDecompose[Manager Agent: Decompose]
+    
+    ManagerDecompose --> LawAgent[Law Agent]
+    ManagerDecompose --> CaseAgent[Case Agent]
+    ManagerDecompose --> StrategyAgent[Strategy Agent]
+    ManagerDecompose --> CitationAgent[Citation Agent]
+    ManagerDecompose --> ExplainerAgent[Explainer Agent]
+    
+    subgraph "Fan-Out: Parallel Execution"
+        LawAgent
+        CaseAgent
+        StrategyAgent
+        CitationAgent
+        ExplainerAgent
+    end
+    
+    LawAgent --> ManagerAggregate[Manager Agent: Aggregate]
+    CaseAgent --> ManagerAggregate
+    StrategyAgent --> ManagerAggregate
+    CitationAgent --> ManagerAggregate
+    ExplainerAgent --> ManagerAggregate
+    
+    ManagerAggregate --> MemoryStore[Memory Store]
+    
+    %% Document Upload Flow
+    Start -- "File Upload" --> DocumentAgent[Document Agent]
+    DocumentAgent --> MemoryStore
+    
+    MemoryStore --> End([End])
+    
+    classDef agent fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef manager fill:#ccf,stroke:#333,stroke-width:2px;
+    classDef router fill:#ff9,stroke:#333,stroke-width:2px;
+    
+    class LawAgent,CaseAgent,StrategyAgent,CitationAgent,ExplainerAgent,DocumentAgent agent;
+    class ManagerDecompose,ManagerAggregate manager;
+    class Router router;
+```
+
 ## 🤖 Specialized Agents
 
 ### 1. Manager Agent (The Orchestrator)
