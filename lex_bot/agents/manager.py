@@ -5,21 +5,92 @@ from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from .base_agent import BaseAgent
 from ..tools.reranker import rerank_documents
 
+
+# Prompt for complexity classification and agent selection
+ROUTER_PROMPT = """You are a legal query router. Analyze the user's query and determine:
+1. **Complexity**: Is this a SIMPLE or COMPLEX query?
+   - SIMPLE: Direct questions about a specific law, section, definition, or basic legal concept.
+     Examples: "What is Section 302 IPC?", "Define bail", "What are the grounds for divorce?"
+   - COMPLEX: Queries requiring multi-step research, legal strategy, citation analysis, or synthesis.
+     Examples: "Analyze the legal strategy for defending a murder case", "How has Kesavananda Bharati been cited?", "Compare IPC and BNS for theft"
+
+2. **Agents** (only if COMPLEX): Which agents are needed? Choose ONLY the ones truly required.
+   - research_agent: For general legal research with RAG + web search
+   - explainer_agent: For educational explanations, simplifying concepts for students
+   - law_agent: For statutes, acts, sections, legal provisions
+   - case_agent: For case law, precedents, judgments
+   - citation_agent: For citation network analysis (how a case has been cited, affirmed, overruled)
+   - strategy_agent: For legal strategy, arguments for/against, risk assessment
+
+Query: {query}
+
+Respond in JSON:
+{{
+    "complexity": "simple" or "complex",
+    "agents": ["agent1", "agent2"] // Only if complex, else empty list
+}}
+"""
+
+
 class ManagerAgent(BaseAgent):
-    def decompose_query(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def classify_and_route(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Analyzes the user query and decomposes it.
+        First-stage router: Classifies query complexity and selects agents.
+        
+        Returns:
+            State update with 'complexity' and 'selected_agents'
         """
         original_query = state.get("original_query")
-        print(f"🤖 Manager Analyzing: {original_query}")
+        print(f"🧭 Router Analyzing: {original_query}")
+        
+        prompt = ChatPromptTemplate.from_template(ROUTER_PROMPT)
+        chain = prompt | self.llm | JsonOutputParser()
+        
+        try:
+            result = chain.invoke({"query": original_query})
+            complexity = result.get("complexity", "simple")
+            agents = result.get("agents", [])
+            
+            # Validate agents
+            valid_agents = {"research_agent", "explainer_agent", "law_agent", "case_agent", "citation_agent", "strategy_agent"}
+            agents = [a for a in agents if a in valid_agents]
+            
+            # Fallback for complex with no agents
+            if complexity == "complex" and not agents:
+                agents = ["law_agent", "case_agent"]
+            
+            print(f"   Complexity: {complexity.upper()}")
+            if agents:
+                print(f"   Selected Agents: {agents}")
+            
+            return {
+                "complexity": complexity,
+                "selected_agents": agents
+            }
+        except Exception as e:
+            print(f"❌ Router Failed: {e}")
+            # Fallback: Treat as simple
+            return {"complexity": "simple", "selected_agents": []}
+
+    def decompose_query(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyzes the user query and decomposes it for parallel agent execution.
+        Only called for COMPLEX queries.
+        """
+        original_query = state.get("original_query")
+        selected_agents = state.get("selected_agents", [])
+        print(f"🤖 Manager Decomposing for agents: {selected_agents}")
         
         prompt = ChatPromptTemplate.from_template("""
-        Analyze the following legal query and decompose it into sub-queries for two specific agents:
-        1. Law Agent: Searches for Statutes, Acts, Sections, and general legal principles.
-        2. Case Agent: Searches for specific Precedents, Case Laws, and Judgments.
+        Analyze the following legal query and create optimized sub-queries for the selected agents.
         
-        If the query is purely about one, leave the other empty.
-        If it's mixed, provide efficient queries for both.
+        Selected Agents: {agents}
+        - law_agent: Searches for Statutes, Acts, Sections, and general legal principles.
+        - case_agent: Searches for specific Precedents, Case Laws, and Judgments.
+        - citation_agent: Analyzes citation networks for a specific case.
+        - strategy_agent: Develops legal strategy and arguments.
+        
+        Create efficient, targeted queries for ONLY the selected agents.
         
         Query: {query}
         
@@ -32,15 +103,19 @@ class ManagerAgent(BaseAgent):
         
         chain = prompt | self.llm | JsonOutputParser()
         try:
-            result = chain.invoke({"query": original_query})
+            result = chain.invoke({"query": original_query, "agents": selected_agents})
             return {
-                "law_query": result.get("law_query"),
-                "case_query": result.get("case_query")
+                "law_query": result.get("law_query") if "law_agent" in selected_agents else None,
+                "case_query": result.get("case_query") if "case_agent" in selected_agents else None
             }
         except Exception as e:
             print(f"❌ Decomposition Failed: {e}")
-            # Fallback: Send to both
-            return {"law_query": original_query, "case_query": original_query}
+            # Fallback: Send original to all selected
+            return {
+                "law_query": original_query if "law_agent" in selected_agents else None,
+                "case_query": original_query if "case_agent" in selected_agents else None
+            }
+
 
     # def generate_outline(self, state: Dict[str, Any]) -> Dict[str, Any]:
     #     """
@@ -112,9 +187,9 @@ class ManagerAgent(BaseAgent):
         # Combine all candidates
         all_docs = law_ctx + case_ctx
         
-        # Context Management: Rerank everything against original query to find the absolute best chunks
-        # Limit to fit context window (e.g. Top 15)
-        top_docs = rerank_documents(state["original_query"], all_docs, top_n=15)
+        # Context Management: Rerank everything against original query
+        # Limit to 10 for token optimization
+        top_docs = rerank_documents(state["original_query"], all_docs, top_n=10)
         
         # Format context
         context_str = ""
@@ -147,3 +222,4 @@ class ManagerAgent(BaseAgent):
         return {"final_answer": answer}
 
 manager_agent = ManagerAgent()
+

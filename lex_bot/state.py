@@ -10,6 +10,7 @@ class AgentState(TypedDict):
     - User memory integration
     - Dual LLM modes
     - Query complexity routing
+    - Dynamic agent selection
     """
     # Helper to merge lists (append) instead of overwrite
     messages: Annotated[List[Dict[str, str]], operator.add]
@@ -25,8 +26,12 @@ class AgentState(TypedDict):
     # LLM mode for this query
     llm_mode: Literal["fast", "reasoning"]
     
-    # Query classification
-    query_complexity: Literal["simple", "complex"]
+    # Query classification (hierarchical routing)
+    complexity: Literal["simple", "complex"]
+    
+    # Dynamically selected agents for complex queries
+    # e.g., ["law_agent", "case_agent", "citation_agent", "strategy_agent"]
+    selected_agents: Optional[List[str]]
     
     # Decomposed queries for complex routing
     sub_queries: Optional[List[str]]
@@ -40,6 +45,10 @@ class AgentState(TypedDict):
     # Tool results from various agents
     tool_results: Annotated[List[Dict], operator.add]
     
+    # Specialized agent results
+    citation_result: Optional[Dict[str, Any]]
+    strategy_result: Optional[Dict[str, Any]]
+    
     # Memory context retrieved for this user
     memory_context: Optional[List[Dict]]
     
@@ -48,4 +57,5 @@ class AgentState(TypedDict):
     
     # Error tracking
     errors: Annotated[List[str], operator.add]
+
 
