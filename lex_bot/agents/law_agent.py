@@ -22,11 +22,42 @@ class LawAgent(BaseAgent):
         # 2. Define Domains (Defaulting to config's preferred, or custom logic if needed)
         domains = PREFERRED_DOMAINS 
         
-        # 3. Search (DB -> Web Fallback handled in tool)
-        context_str, results = search_tool.run(enhanced_query, domains)
+        # 3. Dynamic Tool Execution via Registry
+        from lex_bot.core.tool_registry import tool_registry
+        
+        # Get all tools capable of "statute_lookup" or "law_search"
+        # For now, we prioritize "statute_lookup"
+        tools = tool_registry.get_by_capability("statute_lookup")
+        if not tools:
+            print("⚠️ No law search tools found in registry!")
+            tools = [search_tool]
+            
+        all_results = []
+        combined_context = ""
+        
+        for tool in tools:
+            try:
+                print(f"   🔧 Running {tool.__class__.__name__}...")
+                
+                # Handle different tool signatures
+                if tool.__class__.__name__ in ["SearchTool", "WebSearchTool"]:
+                    res = tool.run(enhanced_query, domains)
+                else:
+                    # Tools like PenalCodeTool, LatinPhrasesTool only take query
+                    res = tool.run(enhanced_query)
+                    
+                if isinstance(res, tuple):
+                    combined_context += res[0] + "\n\n"
+                    all_results.extend(res[1])
+                elif isinstance(res, list):
+                    all_results.extend(res)
+                elif isinstance(res, str):
+                    combined_context += res + "\n\n"
+            except Exception as e:
+                print(f"   ❌ Tool {tool.__class__.__name__} failed: {e}")
         
         # 4. Rerank
-        reranked = rerank_documents(query, results, top_n=10)
+        reranked = rerank_documents(query, all_results, top_n=10)
         
         # 5. Return update
         return {"law_context": reranked} 

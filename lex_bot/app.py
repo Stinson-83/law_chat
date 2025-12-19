@@ -53,8 +53,6 @@ class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Legal research query")
     user_id: Optional[str] = Field(None, description="User ID for memory personalization")
     session_id: Optional[str] = Field(None, description="Session ID for conversation tracking")
-    llm_mode: Optional[str] = Field("fast", description="LLM mode: 'fast' or 'reasoning'")
-    file_path: Optional[str] = Field(None, description="Path to uploaded file (if any)")
 
 
 class QueryResponse(BaseModel):
@@ -108,9 +106,9 @@ async def chat_endpoint(request: QueryRequest):
         print(f"   User: {request.user_id}")
     
     try:
-        # Check for file in session cache if not provided
-        file_path = request.file_path
-        if not file_path and request.session_id:
+        # Check for file in session cache
+        file_path = None
+        if request.session_id:
             session_cache = get_session_cache()
             cached_path = session_cache.get_file_path(request.session_id)
             if cached_path:
@@ -122,7 +120,6 @@ async def chat_endpoint(request: QueryRequest):
             query=request.query,
             user_id=request.user_id,
             session_id=request.session_id or str(uuid.uuid4()),
-            llm_mode=request.llm_mode or "fast",
             file_path=file_path
         )
         

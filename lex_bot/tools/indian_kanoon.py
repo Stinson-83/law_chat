@@ -240,8 +240,8 @@ class IndianKanoonScraper:
 # Register with tool registry
 @register_tool(
     name="indian_kanoon",
-    capabilities=["case_search", "judgment_lookup", "web_scrape"],
-    description="Search and retrieve case law from Indian Kanoon",
+    capabilities=["case_search", "judgment_lookup", "web_scrape", "statute_lookup", "law_search"],
+    description="Search and retrieve case law and statutes from Indian Kanoon",
     requires_rate_limit=True,
 )
 class IndianKanoonTool(IndianKanoonScraper):

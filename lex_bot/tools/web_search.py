@@ -13,6 +13,14 @@ from lex_bot.config import (
 # Configure logging
 logger = logging.getLogger(__name__)
 
+from lex_bot.core.tool_registry import register_tool
+
+@register_tool(
+    name="web_search",
+    capabilities=["web_search", "general_search"],
+    description="Search the web for legal information",
+    requires_rate_limit=True
+)
 class WebSearchTool:
     def __init__(self):
         self.tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
