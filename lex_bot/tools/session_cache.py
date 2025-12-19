@@ -34,6 +34,7 @@ class SessionCache:
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._hashes: Dict[str, set] = {}  # Track content hashes per session
         self._file_paths: Dict[str, str] = {} # Track uploaded file path per session
+        self._file_chunks: Dict[str, List[str]] = {} # Cache extracted chunks by file path
         self._model = None
         self._faiss = None
         self._initialized = False
@@ -58,7 +59,6 @@ class SessionCache:
         except Exception as e:
             logger.error(f"❌ SessionCache init failed: {e}")
             self._initialized = False
-    
     def _get_content_hash(self, text: str) -> str:
         """Generate SHA256 hash of content."""
         return hashlib.sha256(text.encode('utf-8')).hexdigest()
@@ -183,7 +183,6 @@ class SessionCache:
         if session_id not in self._sessions:
             return []
         return self._sessions[session_id]["documents"]
-    
     def set_file_path(self, session_id: str, file_path: str):
         """Store the uploaded file path for a session."""
         self._get_or_create_session(session_id) # Ensure session exists
@@ -194,14 +193,29 @@ class SessionCache:
         """Retrieve the uploaded file path for a session."""
         return self._file_paths.get(session_id)
     
+    def set_file_chunks(self, file_path: str, chunks: List[str]):
+        """Cache extracted text chunks for a file."""
+        self._file_chunks[file_path] = chunks
+        logger.info(f"Cached {len(chunks)} chunks for file: {file_path}")
+        
+    def get_file_chunks(self, file_path: str) -> Optional[List[str]]:
+        """Retrieve cached chunks for a file."""
+        return self._file_chunks.get(file_path)
+    
     def clear_session(self, session_id: str) -> bool:
         """Clear a specific session cache."""
         if session_id in self._sessions:
             del self._sessions[session_id]
         if session_id in self._hashes:
             del self._hashes[session_id]
+            
+        # Cleanup file chunks if associated with this session
         if session_id in self._file_paths:
+            file_path = self._file_paths[session_id]
+            if file_path in self._file_chunks:
+                del self._file_chunks[file_path]
             del self._file_paths[session_id]
+            
         logger.info(f"Cleared session cache: {session_id}")
         return True
     

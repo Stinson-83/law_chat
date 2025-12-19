@@ -53,32 +53,47 @@ class LLMFactory:
         provider = provider or LLM_PROVIDER
         
         # Select model based on mode and provider
-        if provider == "gemini":
-            model_name = GEMINI_REASONING_MODEL if mode == "reasoning" else GEMINI_FAST_MODEL
-            
-            if not GOOGLE_API_KEY:
-                raise ValueError("GOOGLE_API_KEY not set. Cannot use Gemini provider.")
-            
-            return ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=GOOGLE_API_KEY,
-                temperature=temperature,
-            )
+        # Custom Logic as per User Request
+        # Reasoning -> OpenAI gpt-4o-mini
+        # Fast -> Gemini gemini-2.5-flash
         
-        elif provider == "openai":
-            model_name = OPENAI_REASONING_MODEL if mode == "reasoning" else OPENAI_FAST_MODEL
-            
+        if mode == "reasoning":
+            # Force OpenAI gpt-4o-mini
             if not OPENAI_API_KEY:
-                raise ValueError("OPENAI_API_KEY not set. Cannot use OpenAI provider.")
+                raise ValueError("OPENAI_API_KEY not set. Cannot use OpenAI for reasoning mode.")
             
             return ChatOpenAI(
-                model=model_name,
+                model="gpt-4o-mini", # Explicitly requested
                 api_key=OPENAI_API_KEY,
                 temperature=temperature,
             )
+            
+        elif mode == "fast":
+            # Force Gemini Flash
+            if not GOOGLE_API_KEY:
+                raise ValueError("GOOGLE_API_KEY not set. Cannot use Gemini for fast mode.")
+            
+            return ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash", # Explicitly requested
+                google_api_key=GOOGLE_API_KEY,
+                temperature=temperature,
+            )
+            
+        # Fallback for other cases (if any)
+        if provider == "gemini":
+            model_name = GEMINI_REASONING_MODEL if mode == "reasoning" else GEMINI_FAST_MODEL
+            if not GOOGLE_API_KEY:
+                raise ValueError("GOOGLE_API_KEY not set.")
+            return ChatGoogleGenerativeAI(model=model_name, google_api_key=GOOGLE_API_KEY, temperature=temperature)
+        
+        elif provider == "openai":
+            model_name = OPENAI_REASONING_MODEL if mode == "reasoning" else OPENAI_FAST_MODEL
+            if not OPENAI_API_KEY:
+                raise ValueError("OPENAI_API_KEY not set.")
+            return ChatOpenAI(model=model_name, api_key=OPENAI_API_KEY, temperature=temperature)
         
         else:
-            raise ValueError(f"Unknown provider: {provider}. Use 'gemini' or 'openai'.")
+            raise ValueError(f"Unknown provider: {provider}")
     
     @staticmethod
     def get_model_name(

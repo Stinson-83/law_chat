@@ -124,22 +124,58 @@ class ManagerAgent(BaseAgent):
             snippet = doc.get('search_hit') or doc.get('snippet') or doc.get('text', '')
             context_str += f"[{i}] {title} ({doc.get('url')}) [{source_type}]:\n{snippet}\n\n"
             
-        prompt = ChatPromptTemplate.from_template("""
-        You are an Assistant of a Legal Advocate, you expertizes in Indian Laws and Case related to it. 
-        The user wants to conduct a legal research this is his query {query}. 
-        You have to help the user in his research, so answer the user's query based on the provided context.
+        # Dynamic Mode Switching
+        llm_mode = state.get("llm_mode", "fast")
+        if self.mode != llm_mode:
+            print(f"🔄 Switching Manager Agent to {llm_mode} mode...")
+            self.switch_mode(llm_mode)
+            
+        # Select Prompt based on Mode
+        if llm_mode == "reasoning":
+            # Chain of Thought Prompt
+            prompt_template = """
+            You are an expert Legal Research Assistant specializing in Indian Law.
+            The user has asked a complex legal query: {query}
+            
+            You have been provided with the following research context:
+            {context}
+            
+            Your task is to provide a comprehensive, legally sound answer using Chain of Thought reasoning.
+            
+            Step-by-Step Reasoning Instructions:
+            1. **Analyze the Query**: Break down the legal issues involved.
+            2. **Evaluate Statutes**: Identify relevant Acts and Sections from the context. Explain how they apply.
+            3. **Analyze Case Law**: Discuss relevant precedents. How do they interpret the law? Are they binding?
+            4. **Synthesize**: Combine statutory and case law analysis to form a conclusion.
+            5. **Final Answer**: Present the final answer clearly, citing sources using [Number] format.
+            
+            Format your response as follows:
+            ### Legal Analysis
+            [Your step-by-step reasoning here]
+            
+            ### Conclusion
+            [Your final direct answer here]
+            """
+        else:
+            # Standard Fast Prompt
+            prompt_template = """
+            You are an Assistant of a Legal Advocate, you expertizes in Indian Laws and Case related to it. 
+            The user wants to conduct a legal research this is his query {query}. 
+            You have to help the user in his research, so answer the user's query based on the provided context.
+            
+            Context: {context}
+            
+            Query: {query}
+            
+            Instructions for answering the query:
+            - To answer, breakdown the query into different aspects and derive the answer for each aspect from the give context.
+            - Cite your sources using the [Number] format.
+            - Differentiate between Statutes (Law) and Precedents (Cases).
+            - If the context doesn't contain the answer, say so, but attempt to infer from general legal knowledge if safe.
+            - Be professional, precise, and legally sound.
+            """
         
-        Context: {context}
-        
-        Query: {query}
-        
-        Instructions for answering the query:
-        - To answer, breakdown the query into different aspects and derive the answer for each aspect from the give context.
-        - Cite your sources using the [Number] format.
-        - Differentiate between Statutes (Law) and Precedents (Cases).
-        - If the context doesn't contain the answer, say so, but attempt to infer from general legal knowledge if safe.
-        - Be professional, precise, and legally sound.
-        """)
+        prompt = ChatPromptTemplate.from_template(prompt_template)
         
         chain = prompt | self.llm | StrOutputParser()
         answer = chain.invoke({"context": context_str, "query": state["original_query"]})
