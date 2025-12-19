@@ -18,43 +18,40 @@ graph TD
     Start([Start]) --> MemoryRecall[Memory Recall]
     MemoryRecall --> Router{Query Router}
     
-    Router -- "Simple/Complex" --> ManagerDecompose[Manager Agent: Decompose]
+    Router --> ManagerDecompose[Manager Agent: Decompose]
     
-    ManagerDecompose --> LawAgent[Law Agent]
-    ManagerDecompose --> CaseAgent[Case Agent]
-    ManagerDecompose --> StrategyAgent[Strategy Agent]
-    ManagerDecompose --> CitationAgent[Citation Agent]
-    ManagerDecompose --> ExplainerAgent[Explainer Agent]
+    %% Conditional Routing
+    ManagerDecompose -- "File Upload" --> DocumentAgent[Document Agent]
+    ManagerDecompose -- "Text Query" --> LawAgent[Law Agent]
+    ManagerDecompose -- "Text Query" --> CaseAgent[Case Agent]
+    ManagerDecompose -- "Text Query" --> StrategyAgent[Strategy Agent]
+    ManagerDecompose -- "Text Query" --> CitationAgent[Citation Agent]
+    ManagerDecompose -- "Text Query" --> ExplainerAgent[Explainer Agent]
     
-    subgraph "Fan-Out: Parallel Execution"
-        LawAgent
-        CaseAgent
-        StrategyAgent
-        CitationAgent
-        ExplainerAgent
+    %% Agents & Tools
+    subgraph "Specialized Agents & Tools"
+        direction TB
+        
+        LawAgent -.-> LawTools(Statute Lookup, Search, Reranker)
+        CaseAgent -.-> CaseTools(Web Search, ECourts, Reranker)
+        StrategyAgent -.-> StrategyTools(Search, Reranker)
+        CitationAgent -.-> CitationTools(Indian Kanoon Scraper)
+        ExplainerAgent -.-> ExplainerTools(Latin Phrases, Penal Code, Search)
+        DocumentAgent -.-> DocumentTools(PDF Processor, Session Cache, Web Search, Reranker)
     end
     
+    %% Aggregation Flow
     LawAgent --> ManagerAggregate[Manager Agent: Aggregate]
     CaseAgent --> ManagerAggregate
     StrategyAgent --> ManagerAggregate
     CitationAgent --> ManagerAggregate
     ExplainerAgent --> ManagerAggregate
     
-    ManagerAggregate --> MemoryStore[Memory Store]
-    
-    %% Document Upload Flow
-    Start -- "File Upload" --> DocumentAgent[Document Agent]
+    %% Document Flow (Skips Aggregate)
     DocumentAgent --> MemoryStore
     
+    ManagerAggregate --> MemoryStore[Memory Store]
     MemoryStore --> End([End])
-    
-    classDef agent fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef manager fill:#ccf,stroke:#333,stroke-width:2px;
-    classDef router fill:#ff9,stroke:#333,stroke-width:2px;
-    
-    class LawAgent,CaseAgent,StrategyAgent,CitationAgent,ExplainerAgent,DocumentAgent agent;
-    class ManagerDecompose,ManagerAggregate manager;
-    class Router router;
 ```
 
 ## 🤖 Specialized Agents
