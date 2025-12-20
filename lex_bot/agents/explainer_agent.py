@@ -85,7 +85,9 @@ class ExplainerAgent(BaseAgent):
         Returns:
             Updated state with explanation
         """
-        query = state.get("original_query", "")
+        # Get task from router
+        task = state.get("agent_tasks", {}).get("explainer_agent", {})
+        query = task.get("instruction", state.get("original_query", ""))
         
         logger.info(f"📚 ExplainerAgent explaining: {query[:50]}...")
         

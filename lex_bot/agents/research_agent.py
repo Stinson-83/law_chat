@@ -72,7 +72,10 @@ class ResearchAgent(BaseAgent):
         Returns:
             Updated state with context and answer
         """
-        query = state.get("original_query", "")
+        # Get task from router (for complex queries) or fallback to original
+        task = state.get("agent_tasks", {}).get("research_agent", {})
+        query = task.get("instruction", state.get("original_query", ""))
+        
         user_id = state.get("user_id")
         session_id = state.get("session_id", "default")
         

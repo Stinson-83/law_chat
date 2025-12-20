@@ -33,14 +33,18 @@ class AgentState(TypedDict):
     # e.g., ["law_agent", "case_agent", "citation_agent", "strategy_agent"]
     selected_agents: Optional[List[str]]
     
-    # Decomposed queries for complex routing
-    sub_queries: Optional[List[str]]
-    law_query: Optional[str]
-    case_query: Optional[str]
+    # Specific tasks assigned to each agent by router
+    # e.g., {"law_agent": {"task_id": "stat", "instruction": "...", "expected_output": "...", "dependencies": []}}
+    agent_tasks: Optional[Dict[str, Dict[str, Any]]]
+    
+    # Synthesis instructions for final LLM (how to combine agent outputs)
+    synthesis_instruction: Optional[str]
+    synthesis_strategy: Optional[str]  # "equal_weight", "case_law_primary", "statute_primary", "strategy_focused"
     
     # Collected contexts from agents
     law_context: Annotated[List[Dict], operator.add]
     case_context: Annotated[List[Dict], operator.add]
+    citation_context: Annotated[List[Dict], operator.add]  # Citation analysis results
     
     # Tool results from various agents
     tool_results: Annotated[List[Dict], operator.add]

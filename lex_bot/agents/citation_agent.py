@@ -1,150 +1,164 @@
 """
-Citation Agent - Traces case citation networks
+Citation Agent - Traces case citation networks and statutory references.
 
 Finds how cases have been cited, affirmed, distinguished, or overruled.
+Now capable of analyzing statutory citations (IPC/BNS).
 """
 
 from typing import Dict, Any, List
 import logging
+import re
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from lex_bot.agents.base_agent import BaseAgent
 from lex_bot.tools.indian_kanoon import IndianKanoonScraper
+from lex_bot.tools.penal_code_lookup import PenalCodeLookup
 
 logger = logging.getLogger(__name__)
 
 
 CITATION_PROMPT = """You are a legal research specialist analyzing citation networks in Indian case law.
 
-**Case Being Analyzed:**
+**Case Being Analyzed:** (if applicable)
 {case_name}
 
-**Cases That Cite This Case:**
+**Statutory References Detected:**
+{statutes}
+
+**Cases That Cite This Case / Statute:**
 {citing_cases}
 
 **Your Analysis:**
+Provide a structured analysis of how this legal precedent or statute has been interpreted.
 
-## Citation Summary
-Provide an overview of how this case has been received by subsequent courts.
+## 1. Citation Summary
+Overview of how this case/statute is treated by courts.
 
-## Treatment Analysis
+## 2. Treatment Analysis
 Categorize the citations:
 - **Followed/Approved**: Cases that followed this precedent
 - **Distinguished**: Cases that acknowledged but distinguished this case
-- **Questioned/Doubted**: Cases that questioned the reasoning
-- **Overruled**: If the case has been overruled (IMPORTANT - note by which case)
+- **Questioned/Overruled**: Cases that questioned or overruled it
 
-## Key Observations
-- Is this case still good law?
-- Which courts have cited it most?
-- Any recent citations that affect its authority?
+## 3. Statutory Interpretation (Crucial)
+How have courts interpreted the specific Sections mentioned ({statutes})?
+- Did they expand or restrict the scope?
+- Any constitutional challenges?
 
-## Practitioner Note
-Brief advice for lawyers relying on this precedent."""
+## 4. Practitioner Note
+Is this still good law? What caution should a lawyer exercise?
+"""
 
 
 class CitationAgent(BaseAgent):
     """
-    Citation Network Agent for tracing case precedents.
-    
-    Features:
-    - Finds cases that cite a given case
-    - Analyzes how the case has been treated
-    - Identifies if case is still good law
+    Citation Network Agent for tracing case precedents and statute usage.
     """
     
     def __init__(self, mode: str = "reasoning"):
         """Initialize with reasoning mode for analysis."""
         super().__init__(mode=mode)
         self.kanoon = IndianKanoonScraper()
+        self.statute_lookup = PenalCodeLookup()
     
     def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute citation analysis workflow.
-        
-        Args:
-            state: AgentState dictionary
-            
-        Returns:
-            Updated state with citation analysis
+        Returns 'citation_context' for synthesis.
         """
-        query = state.get("original_query", "")
+        # Get task from router
+        task = state.get("agent_tasks", {}).get("citation_agent", {})
+        instruction = task.get("instruction", "")
         
-        logger.info(f"🔗 CitationAgent analyzing: {query[:50]}...")
+        if not instruction:
+            # Fallback
+            instruction = state.get("original_query", "")
         
-        # Extract case name from query
-        case_name = self._extract_case_name(query)
+        logger.info(f"🔗 CitationAgent Task: {instruction[:60]}...")
         
-        # Search for the case
-        case_results = self.kanoon.search(case_name, max_results=5)
+        # 1. Extract potential case name and sections
+        case_name = self._extract_case_name(instruction)
+        sections = self._extract_sections(instruction)
         
-        if not case_results:
+        # 2. Look up statutes
+        statute_details = []
+        if sections:
+            for sec in sections:
+                info = self.statute_lookup.get_section(sec)
+                if info:
+                    statute_details.append(f"Section {info.get('section')} {info.get('code')}: {info.get('offense')}")
+        
+        statute_str = "\n".join(statute_details) if statute_details else "No specific sections identified."
+        
+        # 3. Search for Citing Cases (Priority: Case Name -> Statute)
+        citing_results = []
+        main_case_title = case_name
+        
+        if case_name and len(case_name) > 5:
+            # Search for cases citing the specific case
+            citing_query = f'"{case_name}" cited'
+            citing_results = self.kanoon.search(citing_query, max_results=8)
+        elif sections:
+            # Search for cases citing the statute
+            sec_query = f'Section {sections[0]} cited'
+            citing_results = self.kanoon.search(sec_query, max_results=8)
+            main_case_title = f"Statutes: {', '.join(sections)}"
+        
+        if not citing_results:
+            logger.warning("No citing cases found.")
             return {
-                "final_answer": f"Could not find case: {case_name}. Please provide the exact case name or citation.",
-                "errors": [f"Case not found: {case_name}"]
+                "citation_context": [{"content": "No citation data found.", "source": "CitationAgent"}]
             }
-        
-        # Use first result as the main case
-        main_case = case_results[0]
-        
-        # Search for citing cases
-        citing_query = f'"{case_name}" cited'
-        citing_results = self.kanoon.search(citing_query, max_results=10)
-        
-        # Format citing cases
+            
+        # 4. Generate Analysis using LLM
         citing_context = self._format_citing_cases(citing_results)
         
-        # Generate analysis
         prompt = ChatPromptTemplate.from_template(CITATION_PROMPT)
         chain = prompt | self.llm | StrOutputParser()
         
+        analysis = "Analysis failed."
         try:
             analysis = chain.invoke({
-                "case_name": main_case.get('title', case_name),
+                "case_name": main_case_title,
+                "statutes": statute_str,
                 "citing_cases": citing_context
             })
         except Exception as e:
             logger.error(f"Citation analysis failed: {e}")
-            analysis = f"Citation analysis failed: {e}"
         
+        # 5. Return as context for Manager
         return {
-            "final_answer": analysis,
-            "case_context": citing_results,
-            "tool_results": [{
-                "agent": "citation",
-                "type": "citation_network",
-                "main_case": main_case,
-                "citing_count": len(citing_results)
+            "citation_context": [{
+                "content": analysis,
+                "source": "CitationAgent",
+                "meta": {
+                    "case": main_case_title, 
+                    "statutes": sections,
+                    "citing_cases_count": len(citing_results)
+                }
             }]
         }
     
-    def _extract_case_name(self, query: str) -> str:
-        """Extract case name from query."""
-        # Remove common phrases
-        import re
-        query = re.sub(r'(citation|citations|cited|cite|how|has|been|of|the|case)\s*', '', query, flags=re.IGNORECASE)
-        return query.strip()
+    def _extract_case_name(self, text: str) -> str:
+        """Extract potential case name."""
+        # Simple heuristic: remove common words
+        clean = re.sub(r'(citation|citations|cited|cite|how|has|been|of|the|case|section|ipc|bns|act)\s*', '', text, flags=re.IGNORECASE)
+        return clean.strip()
+
+    def _extract_sections(self, text: str) -> List[str]:
+        """Extract section numbers (e.g., '302', '103')."""
+        matches = re.findall(r'\b(\d+[A-Za-z]?)\b', text)
+        return matches[:3] # Limit to top 3
     
     def _format_citing_cases(self, cases: List[Dict]) -> str:
         """Format citing cases for analysis."""
-        if not cases:
-            return "No citing cases found in the search results."
-        
         parts = []
         for i, case in enumerate(cases, 1):
             title = case.get('title', 'Unknown')
-            court = case.get('court', '')
-            date = case.get('date', '')
-            snippet = case.get('snippet', '')[:300]
-            
-            parts.append(
-                f"{i}. **{title}**\n"
-                f"   Court: {court or 'Not specified'} | Date: {date or 'Unknown'}\n"
-                f"   Context: {snippet}"
-            )
-        
+            snippet = case.get('snippet', '')[:250]
+            parts.append(f"{i}. **{title}**\n   {snippet}")
         return "\n\n".join(parts)
 
 

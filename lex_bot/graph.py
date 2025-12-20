@@ -123,8 +123,7 @@ def define_graph():
     # Simple path
     workflow.add_node("research_agent", research_agent.run)
     
-    # Complex path
-    workflow.add_node("manager_decompose", manager_agent.decompose_query)
+    # Complex path - agents get tasks directly from router (no decompose needed)
     workflow.add_node("law_agent", law_agent.run)
     workflow.add_node("case_agent", case_agent.run)
     workflow.add_node("citation_agent", citation_agent.run)
@@ -135,17 +134,20 @@ def define_graph():
     # Memory
     workflow.add_node("memory_store", memory_store_node)
     
+    # Clarification check for complex queries
+    workflow.add_node("check_clarification", manager_agent.check_needs_clarification)
+    
     # === EDGES ===
     # Entry point
     workflow.set_entry_point("memory_recall")
     workflow.add_edge("memory_recall", "router")
     
-    # Router -> Simple or Complex
-    def route_by_complexity(state: AgentState) -> Literal["research_agent", "manager_decompose"]:
+    # Router -> Simple or Complex (with clarification check)
+    def route_by_complexity(state: AgentState) -> Literal["research_agent", "check_clarification"]:
         """Route based on query complexity."""
         complexity = state.get("complexity", "simple")
         if complexity == "complex":
-            return "manager_decompose"
+            return "check_clarification"
         return "research_agent"
     
     workflow.add_conditional_edges(
@@ -153,19 +155,31 @@ def define_graph():
         route_by_complexity,
         {
             "research_agent": "research_agent",
-            "manager_decompose": "manager_decompose"
+            "check_clarification": "check_clarification"
         }
     )
     
-    # Simple path: Research -> Memory Store
-    workflow.add_edge("research_agent", "memory_store")
+    # Clarification check -> either ask for clarification (end) or proceed to agents
+    def route_after_clarification(state: AgentState) -> Literal["law_agent", "case_agent", "citation_agent", "strategy_agent", "explainer_agent", "research_agent", "manager_aggregate", "memory_store"]:
+        """Route based on whether clarification is needed."""
+        if state.get("needs_clarification", False):
+            # Skip to memory store (final_answer already set with questions)
+            return "memory_store"
+        
+        # Go directly to agents - router already assigned tasks
+        selected = state.get("selected_agents", [])
+        if selected:
+            # Return first agent in list (conditional edges must return single node)
+            # The actual fan-out happens in the next conditional
+            return selected[0] if selected else "manager_aggregate"
+        return "manager_aggregate"
     
-    # Complex path: Decompose -> Dynamic Fan-out
+    # For complex queries after clarification -> dynamic fan-out to selected agents
     def route_to_agents(state: AgentState) -> List[str]:
-        """Route to selected agents based on manager's analysis."""
+        """Route to selected agents based on router's assignment."""
         selected = state.get("selected_agents", [])
         
-        # Validate and return only valid agents (all 6 are available in complex path)
+        # Validate only
         valid = ["research_agent", "explainer_agent", "law_agent", "case_agent", "citation_agent", "strategy_agent"]
         routes = [a for a in selected if a in valid]
         
@@ -175,18 +189,23 @@ def define_graph():
         
         return routes
     
+    # Add conditional fan-out from check_clarification to all possible agents
     workflow.add_conditional_edges(
-        "manager_decompose",
+        "check_clarification",
         route_to_agents,
+
         ["research_agent", "explainer_agent", "law_agent", "case_agent", "citation_agent", "strategy_agent"]
     )
     
-    # Fan-in: All agents -> Manager Aggregate
+    # Fan-in: All complex agents -> Manager Aggregate
     workflow.add_edge("law_agent", "manager_aggregate")
     workflow.add_edge("case_agent", "manager_aggregate")
     workflow.add_edge("citation_agent", "manager_aggregate")
     workflow.add_edge("strategy_agent", "manager_aggregate")
     workflow.add_edge("explainer_agent", "manager_aggregate")
+    
+    # Simple path: Research -> Memory Store
+    workflow.add_edge("research_agent", "memory_store")
     
     # Aggregate -> Memory Store -> END
     workflow.add_edge("manager_aggregate", "memory_store")

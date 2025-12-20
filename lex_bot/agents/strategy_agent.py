@@ -86,7 +86,9 @@ class LegalStrategyAgent(BaseAgent):
         Returns:
             Updated state with strategy analysis
         """
-        query = state.get("original_query", "")
+        # Get task from router
+        task = state.get("agent_tasks", {}).get("strategy_agent", {})
+        query = task.get("instruction", state.get("original_query", ""))
         
         logger.info(f"⚖️ StrategyAgent analyzing: {query[:50]}...")
         

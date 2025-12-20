@@ -218,3 +218,34 @@ class ChatStore:
         except Exception as e:
             logger.error(f"Failed to delete session: {e}")
             return False
+    
+    def cleanup_old_sessions(self, retention_days: int = 15) -> int:
+        """
+        Delete chat sessions older than retention_days.
+        
+        Args:
+            retention_days: Number of days to keep (default 15)
+            
+        Returns:
+            Number of messages deleted
+        """
+        if not self._initialized:
+            return 0
+        
+        try:
+            from datetime import timedelta
+            cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+            
+            with self.SessionLocal() as session:
+                result = session.query(ChatMessage).filter(
+                    ChatMessage.timestamp < cutoff_date
+                ).delete()
+                session.commit()
+                
+                if result > 0:
+                    logger.info(f"🧹 Cleaned up {result} messages older than {retention_days} days")
+                return result
+        except Exception as e:
+            logger.error(f"Failed to cleanup old sessions: {e}")
+            return 0
+
