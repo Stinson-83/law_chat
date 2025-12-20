@@ -21,7 +21,9 @@ class AgentState(TypedDict):
     # --- New v2 fields ---
     # User and session tracking
     user_id: Optional[str]
+    user_id: Optional[str]
     session_id: Optional[str]
+    uploaded_file_path: Optional[str]
     
     # LLM mode for this query
     llm_mode: Literal["fast", "reasoning"]
@@ -45,6 +47,7 @@ class AgentState(TypedDict):
     law_context: Annotated[List[Dict], operator.add]
     case_context: Annotated[List[Dict], operator.add]
     citation_context: Annotated[List[Dict], operator.add]  # Citation analysis results
+    document_context: Annotated[List[Dict], operator.add]
     
     # Tool results from various agents
     tool_results: Annotated[List[Dict], operator.add]

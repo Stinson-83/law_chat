@@ -20,7 +20,7 @@ from typing import Optional, List
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
@@ -40,6 +40,7 @@ from lex_bot.graph import run_query
 from lex_bot.memory import UserMemoryManager
 from lex_bot.memory.chat_store import ChatStore
 from lex_bot.config import MEM0_ENABLED
+from lex_bot.tools.session_cache import get_session_cache
 
 # Logging setup
 logging.basicConfig(
@@ -120,6 +121,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    session_id: str = Form(...)
+):
+    """
+    Upload a file for temporary processing.
+    Requires session_id to associate the file with a conversation.
+    """
+    try:
+        # Create uploads directory if not exists
+        upload_dir = os.path.join(current_dir, "data", "uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generate unique filename
+        file_ext = os.path.splitext(file.filename)[1]
+        unique_name = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(upload_dir, unique_name)
+        
+        # Save file
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+            
+        # Store in session cache
+        session_cache = get_session_cache()
+        session_cache.set_file_path(session_id, file_path)
+            
+        print(f"📂 File uploaded for session {session_id}: {file_path}")
+        return {
+            "file_path": file_path, 
+            "filename": file.filename,
+            "session_id": session_id,
+            "message": "File uploaded and linked to session."
+        }
+        
+    except Exception as e:
+        print(f"❌ Upload Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============ Request/Response Models ============
@@ -287,7 +329,8 @@ async def _process_chat(
             query=request.query,
             user_id=request.user_id,
             session_id=session_id,
-            llm_mode=llm_mode
+            llm_mode=llm_mode,
+            file_path=get_session_cache().get_file_path(session_id) if session_id else None
         )
         
         answer = result.get("final_answer", "No answer generated.")

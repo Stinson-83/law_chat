@@ -18,11 +18,30 @@ class ManagerAgent(BaseAgent):
         original_query = state.get("original_query")
         print(f"🧭 Router Analyzing: {original_query}")
         
+        # Format Document Context
+        doc_ctx = state.get("document_context", [])
+        doc_str = "No document uploaded."
+        if doc_ctx:
+            doc_str = "\n\n".join([f"[Chunk]: {c['text']}" for c in doc_ctx])
+
+        # Format Law Context
+        law_ctx = state.get("law_context", [])
+        law_str = "\n\n".join([f"Section {l['section']} ({l['act']}): {l['text']}" for l in law_ctx]) if law_ctx else "No specific statutes found."
+        
+        # Format Case Context
+        case_ctx = state.get("case_context", [])
+        case_str = "\n\n".join([f"Case: {c['title']}\nSummary: {c['summary']}" for c in case_ctx]) if case_ctx else "No specific cases found."
+
         prompt = ChatPromptTemplate.from_template(ROUTER_PROMPT)
         chain = prompt | self.llm | JsonOutputParser()
         
         try:
-            result = chain.invoke({"query": original_query})
+            result = chain.invoke({
+                "query": original_query,
+                "document_context": doc_str,
+                "law_context": law_str,
+                "case_context": case_str
+            })
             complexity = result.get("complexity", "simple")
             
             # Extract agent_tasks (new format with task_id, instruction, expected_output, dependencies)
@@ -112,20 +131,70 @@ class ManagerAgent(BaseAgent):
         # You are an Assistant to a Legal Advocate specializing in Indian Law.
 
         # Your task is to produce a structured OUTLINE of how you will research and answer the user's legal query.
+    def generate_outline(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Aggregates context and generates outline.
+        """
+        print("📝 Generating Outline...")
+        law_ctx = state.get("law_context", [])
+        case_ctx = state.get("case_context", [])
+        document_ctx = state.get("document_context", []) # Assuming this will be available in state
+        
+        # Combine all candidates
+        all_docs = law_ctx + case_ctx + document_ctx
+        
+        # Context Management: Rerank everything against original query to find the absolute best chunks
+        # Limit to fit context window (e.g. Top 15)
+        top_docs = rerank_documents(state["original_query"], all_docs, top_n=15)
+        
+        # Format context
+        law_context_str = ""
+        case_context_str = ""
+        document_context_str = ""
 
-        # DO NOT provide the final answer yet.
+        for i, doc in enumerate(top_docs, 1):
+            source_type = doc.get('source', 'Web')
+            title = doc.get('title', 'Untitled')
+            snippet = doc.get('search_hit') or doc.get('snippet') or doc.get('text', '')
+            formatted_doc = f"[{i}] {title} ({doc.get('url')}) [{source_type}]:\n{snippet}\n\n"
+            
+            if source_type == 'Law':
+                law_context_str += formatted_doc
+            elif source_type == 'Case':
+                case_context_str += formatted_doc
+            elif source_type == 'Document': # Assuming 'Document' as source type for uploaded files
+                document_context_str += formatted_doc
+            else: # Fallback for other types or if source not specified
+                document_context_str += formatted_doc # Treat as general document context for now
 
-        # Using ONLY the provided context, create an outline that includes:
+        # Ensure non-empty strings for prompt
+        law_context_str = law_context_str if law_context_str else "No relevant statutes found."
+        case_context_str = case_context_str if case_context_str else "No relevant case law found."
+        document_context_str = document_context_str if document_context_str else "No relevant documents found."
+            
+        prompt = ChatPromptTemplate.from_template("""
+        You are an Assistant to a Legal Advocate specializing in Indian Law.
 
-        # 1. Key legal issues raised by the query.
-        # 2. Relevant statutes (sections of acts) found in context.
-        # 3. Relevant case law (precedents) found in context.
+        Your task is to produce a structured OUTLINE of how you will research and answer the user's legal query.
+
+        DO NOT provide the final answer yet.
+
+        Using ONLY the provided context, create an outline that includes:
+
+        1. Key legal issues raised by the query.
+        2. Relevant statutes (sections of acts) found in**Document Context (from uploaded file):**
+{document_context}
+
+**Legal Context (Statutes):**
+{law_context}
+
+**Case Law Context (Precedents):**
+{case_context}.
         # 4. Sub-questions that must be answered.
         # 5. Which parts of the context apply to each sub-question.
         # 6. What additional general legal principles (Indian law only) may assist, if safe.
 
         # Rules:
-        # - Do NOT generate any legal conclusions or final answers here.
         # - Do NOT hallucinate cases or statutes not present in the context (general principles allowed, but flagged as such).
         # - Focus only on structuring the reasoning.
 
@@ -203,9 +272,10 @@ class ManagerAgent(BaseAgent):
         law_ctx = state.get("law_context", [])
         case_ctx = state.get("case_context", [])
         llm_mode = state.get("llm_mode", "fast")
+        document_ctx = state.get("document_context", [])
         
         # Combine all candidates
-        all_docs = law_ctx + case_ctx
+        all_docs = law_ctx + case_ctx + document_ctx
         
         # Context Management: Rerank everything against original query
         # Limit to 10 for token optimization

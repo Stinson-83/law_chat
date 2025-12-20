@@ -58,6 +58,7 @@ from .agents.research_agent import research_agent
 from .agents.citation_agent import citation_agent
 from .agents.strategy_agent import strategy_agent
 from .agents.explainer_agent import explainer_agent
+from .agents.document_agent import document_agent
 from .memory import UserMemoryManager
 from .config import MEM0_ENABLED
 
@@ -122,6 +123,7 @@ def define_graph():
     
     # Simple path
     workflow.add_node("research_agent", research_agent.run)
+    workflow.add_node("document_agent", document_agent.run)
     
     # Complex path - agents get tasks directly from router (no decompose needed)
     workflow.add_node("law_agent", law_agent.run)
@@ -143,8 +145,12 @@ def define_graph():
     workflow.add_edge("memory_recall", "router")
     
     # Router -> Simple or Complex (with clarification check)
-    def route_by_complexity(state: AgentState) -> Literal["research_agent", "check_clarification"]:
+    def route_by_complexity(state: AgentState) -> Literal["research_agent", "check_clarification", "document_agent"]:
         """Route based on query complexity."""
+        # Only route to document agent if we haven't processed it yet
+        if state.get("uploaded_file_path") and not state.get("document_context"):
+            return "document_agent"
+            
         complexity = state.get("complexity", "simple")
         if complexity == "complex":
             return "check_clarification"
@@ -155,7 +161,8 @@ def define_graph():
         route_by_complexity,
         {
             "research_agent": "research_agent",
-            "check_clarification": "check_clarification"
+            "check_clarification": "check_clarification",
+            "document_agent": "document_agent"
         }
     )
     
@@ -207,6 +214,9 @@ def define_graph():
     # Simple path: Research -> Memory Store
     workflow.add_edge("research_agent", "memory_store")
     
+    # Document Agent -> Router (to decide next steps with new context)
+    workflow.add_edge("document_agent", "router")
+    
     # Aggregate -> Memory Store -> END
     workflow.add_edge("manager_aggregate", "memory_store")
     workflow.add_edge("memory_store", END)
@@ -223,7 +233,8 @@ def run_query(
     query: str,
     user_id: str = None,
     session_id: str = None,
-    llm_mode: str = "fast"
+    llm_mode: str = "fast",
+    file_path: str = None
 ) -> Dict[str, Any]:
     """
     Run a legal research query through the agent workflow.
@@ -243,6 +254,7 @@ def run_query(
         "user_id": user_id,
         "session_id": session_id,
         "llm_mode": llm_mode,
+        "uploaded_file_path": file_path,
         "complexity": None,
         "selected_agents": [],
         "law_context": [],

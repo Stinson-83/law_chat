@@ -102,9 +102,12 @@ class ResearchAgent(BaseAgent):
         if search_results and session_id:
             self.session_cache.add_documents(session_id, search_results)
         
-        # 5. Rerank results
-        if search_results:
-            top_results = rerank_documents(query, search_results, top_n=10)
+        # 5. Rerank results (Search + Document Context)
+        document_context = state.get("document_context", [])
+        all_candidates = (search_results or []) + document_context
+        
+        if all_candidates:
+            top_results = rerank_documents(query, all_candidates, top_n=10)
         else:
             top_results = []
         
