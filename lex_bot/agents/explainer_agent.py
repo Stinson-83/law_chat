@@ -133,10 +133,10 @@ class ExplainerAgent(BaseAgent):
             explanation = f"Failed to generate explanation: {e}"
         
         return {
-            "final_answer": explanation,
             "tool_results": [{
                 "agent": "explainer",
                 "type": "explanation",
+                "content": explanation,
                 "latin_terms": latin_results,
                 "section_info": section_context
             }]

@@ -136,11 +136,26 @@ class ResearchAgent(BaseAgent):
             except Exception as e:
                 logger.warning(f"Memory storage failed: {e}")
         
-        return {
+        # 8. Return result based on complexity
+        complexity = state.get("complexity", "simple")
+        
+        result = {
             "law_context": top_results,
-            "final_answer": answer,
             "memory_context": [{"content": memory_context}] if memory_context else []
         }
+        
+        # Only return final_answer if we are the sole agent (simple mode)
+        if complexity != "complex":
+            result["final_answer"] = answer
+        else:
+            # In complex mode, return answer as a tool result for the manager to aggregate
+            result["tool_results"] = [{
+                "agent": "research_agent",
+                "type": "research",
+                "content": answer
+            }]
+            
+        return result
     
     def _format_context(self, results: List[Dict]) -> str:
         """Format search results for prompt."""

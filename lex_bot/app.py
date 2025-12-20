@@ -56,6 +56,50 @@ chat_store = ChatStore()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Lex Bot v2 starting up...")
+    
+    # Check Database Connection
+    from sqlalchemy import create_engine, text
+    from lex_bot.config import DATABASE_URL
+    
+    try:
+        if not DATABASE_URL:
+            raise ValueError("DATABASE_URL not set in .env")
+            
+        engine = create_engine(DATABASE_URL)
+        with engine.connect() as conn:
+            # Check connection
+            conn.execute(text("SELECT 1"))
+            logger.info("✅ Database connected")
+            
+            # Check pgvector extension
+            result = conn.execute(text("SELECT * FROM pg_extension WHERE extname = 'vector'"))
+            if not result.fetchone():
+                logger.warning("⚠️ 'vector' extension not found. Attempting to create...")
+                try:
+                    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                    conn.commit()
+                    logger.info("✅ 'vector' extension created")
+                except Exception as ext_e:
+                    logger.error(f"❌ Failed to create 'vector' extension: {ext_e}")
+                    logger.error("Please run 'CREATE EXTENSION vector;' in your database manually.")
+            else:
+                logger.info("✅ 'vector' extension verified")
+                
+    except Exception as e:
+        logger.error(f"❌ Database Error: {e}")
+        print("\n" + "="*60)
+        print("❌ CRITICAL ERROR: Database Connection Failed")
+        print("="*60)
+        print(f"Error: {e}")
+        print("\nPlease ensure PostgreSQL is running and DATABASE_URL is correct.")
+        print("If running locally without Docker:")
+        print("1. Install PostgreSQL")
+        print("2. Create a database")
+        print("3. Set DATABASE_URL in .env")
+        print("4. Enable pgvector extension: CREATE EXTENSION vector;")
+        print("="*60 + "\n")
+        # We don't exit here to allow debugging, but the app might fail later
+        
     yield
     logger.info("👋 Lex Bot v2 shutting down...")
 
@@ -235,7 +279,7 @@ async def _process_chat(
                 session_id=session_id,
                 role="user",
                 content=request.query,
-                metadata={"llm_mode": llm_mode}
+                msg_metadata={"llm_mode": llm_mode}
             )
         
         # Run query through graph
@@ -255,7 +299,7 @@ async def _process_chat(
                 session_id=session_id,
                 role="assistant",
                 content=answer,
-                metadata={
+                msg_metadata={
                     "complexity": result.get("complexity"),
                     "agents": result.get("selected_agents")
                 }

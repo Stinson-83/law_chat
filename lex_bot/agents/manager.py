@@ -218,6 +218,16 @@ class ManagerAgent(BaseAgent):
             title = doc.get('title', 'Untitled')
             snippet = doc.get('search_hit') or doc.get('snippet') or doc.get('text', '')
             context_str += f"[{i}] {title} ({doc.get('url')}) [{source_type}]:\n{snippet}\n\n"
+            
+        # Add tool results (e.g. from Explainer or Research agent in complex mode)
+        tool_results = state.get("tool_results", [])
+        if tool_results:
+            context_str += "\n\n=== AGENT REPORTS ===\n"
+            for res in tool_results:
+                agent = res.get("agent", "Unknown Agent")
+                content = res.get("content", "")
+                if content:
+                    context_str += f"\n--- Report from {agent} ---\n{content}\n"
         
         # Choose prompt based on mode
         if llm_mode == "reasoning":
