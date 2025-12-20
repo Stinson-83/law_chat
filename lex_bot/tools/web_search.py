@@ -181,34 +181,73 @@ class WebSearchTool:
 
     def run(self, query: str, domains: List[str] = None) -> Tuple[str, List[Dict]]:
         """
-        Executes the search strategy with full fallback chain:
-        1. DDG Search (free)
-        2. If DDG empty -> Tavily
-        3. If Tavily empty -> Serper
-        4. If Serper empty -> Google SERP
-        5. Scrape URLs -> Context
+        Executes "Omni-Search" Strategy:
+        1. Runs DuckDuckGo (Breadth/Free) AND Tavily (Depth/Smart) in PARALLEL.
+        2. Merges and deduplicates results.
+        3. Fallback to Serper/Google only if both fail.
+        4. Scrapes content.
+        
+        This maximizes recall and minimizes latency compared to sequential waterfalls.
         """
-        results = self._ddgs_search(query, WEB_SEARCH_MAX_RESULTS, domains)
+        all_results = []
         
-        if not results:
-            print("⚠️ DDG yielded no results, switching to Tavily...")
-            results = self._tavily_search(query, WEB_SEARCH_MAX_RESULTS, domains)
-        
-        if not results:
-            print("⚠️ Tavily yielded no results, switching to Serper...")
-            results = self._serper_search(query, WEB_SEARCH_MAX_RESULTS, domains)
-        
-        if not results:
-            print("⚠️ Serper yielded no results, switching to Google SERP...")
-            results = self._google_serp_search(query, WEB_SEARCH_MAX_RESULTS, domains)
+        # Parallel Execution of Primary Providers
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_ddg = executor.submit(self._ddgs_search, query, WEB_SEARCH_MAX_RESULTS, domains)
             
-        # Extract URLs
-        urls = [r['url'] for r in results if r.get('url')]
+            # Only run Tavily if key exists
+            future_tavily = None
+            if self.tavily_client:
+                future_tavily = executor.submit(self._tavily_search, query, WEB_SEARCH_MAX_RESULTS, domains)
+            
+            # Collect DDG
+            try:
+                ddg_res = future_ddg.result()
+                if ddg_res:
+                    # Mark source
+                    for r in ddg_res: r['source'] = 'DuckDuckGo'
+                    all_results.extend(ddg_res)
+            except Exception as e:
+                logger.error(f"DDG Parallel Failed: {e}")
+
+            # Collect Tavily
+            if future_tavily:
+                try:
+                    tav_res = future_tavily.result()
+                    if tav_res:
+                        # Mark source
+                        for r in tav_res: r['source'] = 'Tavily'
+                        all_results.extend(tav_res)
+                except Exception as e:
+                    logger.error(f"Tavily Parallel Failed: {e}")
+
+        # Deduplicate by URL
+        seen_urls = set()
+        unique_results = []
+        for r in all_results:
+            u = r.get('url')
+            if u and u not in seen_urls:
+                seen_urls.add(u)
+                unique_results.append(r)
+        
+        # Fallback Chain (if parallel search completely failed)
+        if not unique_results:
+            print("⚠️ Primary parallel search failed. Engaging fallbacks...")
+            # Try Serper
+            results = self._serper_search(query, WEB_SEARCH_MAX_RESULTS, domains)
+            if not results:
+                # Try Google SERP
+                results = self._google_serp_search(query, WEB_SEARCH_MAX_RESULTS, domains)
+            unique_results = results
+
+        # Extract URLs for scraping
+        # Limit scraping to avoiding timeout on too many results
+        scrape_candidates = [r['url'] for r in unique_results if r.get('url')][:7] 
         
         # Scrape
-        full_context = self.scrape_urls(urls)
+        full_context = self.scrape_urls(scrape_candidates)
         
-        return full_context, results
+        return full_context, unique_results
 
 # Singleton initialization
 web_search_tool = WebSearchTool()

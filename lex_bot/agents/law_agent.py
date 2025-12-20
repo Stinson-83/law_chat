@@ -30,11 +30,31 @@ class LawAgent(BaseAgent):
         # 2. Define Domains
         domains = PREFERRED_DOMAINS 
         
-        # 3. Search (DB -> Web Fallback handled in tool)
-        context_str, results = search_tool.run(enhanced_query, domains)
+        # 3. Hybrid Search Strategy (DB + Web Aggregation)
+        # Inspired by robust "Branch 2" logic
+        all_results = []
+        
+        # A. Primary Search (DB preferred, auto-fallback to Web if empty)
+        _, primary_results = search_tool.run(enhanced_query, domains)
+        all_results.extend(primary_results)
+        
+        # B. Web Augmentation
+        # If primary search came from Local DB, we force a Web Search to ensure completeness (e.g. missing Acts)
+        # If primary search already fell back to Web (source != Database), we skip to avoid dupes/cost.
+        is_local_result = primary_results and primary_results[0].get('source') == "Database"
+        
+        if is_local_result:
+            print(f"   🌐 Logic: DB results found. Augmenting with Web Search for completeness...")
+            try:
+                from ..tools.web_search import web_search_tool
+                _, web_results = web_search_tool.run(enhanced_query, domains)
+                all_results.extend(web_results)
+            except Exception as e:
+                print(f"   ⚠️ Web augmentation failed: {e}")
         
         # 4. Rerank against original instruction
-        reranked = rerank_documents(instruction, results, top_n=10)
+        # (Reranker handles the combined list)
+        reranked = rerank_documents(instruction, all_results, top_n=10)
         
         # 5. Return update
         return {"law_context": reranked} 
